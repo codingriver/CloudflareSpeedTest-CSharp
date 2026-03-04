@@ -46,8 +46,14 @@ function Publish-Rid {
     }
     $ExePath = Join-Path $OutDir $Exe
     if (Test-Path $ExePath) {
-        $Size = (Get-Item $ExePath).Length / 1MB
-        Write-Host "    Output: $OutDir\$Exe ($([math]::Round($Size, 2)) MB)" -ForegroundColor Green
+        # 本地打包输出文件名与 GitHub Actions Release 保持一致，且不再放在子文件夹中
+        # 如：cfst-win-x64.exe / cfst-linux-x64 / cfst-osx-x64 / cfst-osx-arm64
+        $finalName = if ($Rid -eq 'win-x64') { "cfst-$Rid$suffix.exe" } else { "cfst-$Rid$suffix" }
+        $FinalPath = Join-Path $PublishBase $finalName
+        Copy-Item $ExePath $FinalPath -Force
+
+        $Size = (Get-Item $FinalPath).Length / 1MB
+        Write-Host "    Output: $FinalPath ($([math]::Round($Size, 2)) MB)" -ForegroundColor Green
     }
 }
 

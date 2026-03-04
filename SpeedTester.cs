@@ -25,7 +25,8 @@ public static class SpeedTester
         var take = Math.Min(config.SpeedNum, candidates.Count);
         var toTest = candidates.Take(take).ToList();
 
-        var results = new System.Collections.Concurrent.ConcurrentBag<IPInfo>();
+        // 存储已测速 IP 的下载速度和地区码
+        var speedMap = new System.Collections.Concurrent.ConcurrentDictionary<IPAddress, (double SpeedMbps, string Colo)>();
         var channel = Channel.CreateBounded<IPInfo>(new BoundedChannelOptions(100) { FullMode = BoundedChannelFullMode.Wait });
         var semaphore = new SemaphoreSlim(config.SpeedThreads);
         var completed = 0;
@@ -43,17 +44,11 @@ public static class SpeedTester
                 try
                 {
                     var (speedMbps, colo) = await DownloadSpeedAsync(info.IP, config.SpeedUrl, config.Port, config.DownloadTimeoutSeconds);
-                    var result = new IPInfo
-                    {
-                        IP = info.IP,
-                        Sended = info.Sended,
-                        Received = info.Received,
-                        DelayMs = info.DelayMs,
-                        Colo = colo,
-                        DownloadSpeedMbps = speedMbps
-                    };
-                    if (speedMbps >= config.SpeedMinMbps)
-                        results.Add(result);
+                    // 只记录测速结果，不在此阶段做过滤
+                    if (!string.IsNullOrEmpty(colo))
+                        speedMap[info.IP] = (speedMbps, colo);
+                    else
+                        speedMap[info.IP] = (speedMbps, info.Colo ?? "");
                 }
                 finally
                 {
@@ -65,7 +60,63 @@ public static class SpeedTester
         }, ct));
 
         await Task.WhenAll(workers);
-        return results.OrderByDescending(x => x.DownloadSpeedMbps).ToList();
+
+        // 根据需求对原 candidates 进行排序：
+        // 1. 如果存在下载速度 > 0 的 IP：
+        //    - 速度 > 0 的 IP 按速度从高到低排在前面
+        //    - 速度 == 0（或未测速）的 IP 按原始 candidates 顺序排在后面
+        // 2. 如果全部速度都为 0（或未测速）：
+        //    - 完全按原始 candidates 顺序返回
+
+        var withSpeed = new List<IPInfo>();
+        var zeroOrNoSpeed = new List<IPInfo>();
+
+        var hasPositiveSpeed = speedMap.Values.Any(v => v.SpeedMbps > 0);
+
+        foreach (var info in candidates)
+        {
+            if (!speedMap.TryGetValue(info.IP, out var s))
+            {
+                // 未参与测速，视为 0 Mbps，保留原 Colo
+                var clone = new IPInfo
+                {
+                    IP = info.IP,
+                    Sended = info.Sended,
+                    Received = info.Received,
+                    DelayMs = info.DelayMs,
+                    Colo = info.Colo,
+                    DownloadSpeedMbps = 0
+                };
+
+                zeroOrNoSpeed.Add(clone);
+                continue;
+            }
+
+            var result = new IPInfo
+            {
+                IP = info.IP,
+                Sended = info.Sended,
+                Received = info.Received,
+                DelayMs = info.DelayMs,
+                Colo = string.IsNullOrEmpty(s.Colo) ? info.Colo : s.Colo,
+                DownloadSpeedMbps = s.SpeedMbps
+            };
+
+            if (s.SpeedMbps > 0)
+                withSpeed.Add(result);
+            else
+                zeroOrNoSpeed.Add(result);
+        }
+
+        if (!hasPositiveSpeed)
+        {
+            // 所有速度为 0：完全按延迟阶段的原始顺序返回
+            return zeroOrNoSpeed;
+        }
+
+        // 有速度>0：先按速度降序，再接上其余 IP（保持原始顺序）
+        withSpeed.Sort((a, b) => b.DownloadSpeedMbps.CompareTo(a.DownloadSpeedMbps));
+        return withSpeed.Concat(zeroOrNoSpeed).ToList();
     }
 
     /// <summary>

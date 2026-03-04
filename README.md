@@ -167,7 +167,11 @@ chmod +x cfst-osx-x64    # 或 cfst-osx-arm64
 ./cfst -httping -at "6:00,18:00" -hosts "cdn.example.com,api.example.com,*.example.com"
 ```
 
-**注意**：修改 hosts 需管理员/root 权限。
+**注意**：  
+- 在 **Windows** 上，更新 hosts 会写入 `C:\Windows\System32\drivers\etc\hosts`，需要**以管理员身份运行**终端或双击 exe；  
+- 在 **Linux** 上，更新 hosts 会写入 `/etc/hosts`，需要使用 **root 用户或 `sudo`** 运行；  
+- 在 **macOS** 上，同样写入 `/etc/hosts`，需要使用 **sudo/root** 运行。  
+如果权限不足，程序不会直接修改系统 hosts，而是把待写入内容输出到当前目录的 `hosts-pending.txt`，可手动合并。
 
 ## 功能
 
@@ -212,13 +216,13 @@ dotnet build
 | **下载测速** | | |
 | `-url` | Cloudflare 官方 | 测速下载地址 |
 | `-tp` | 443 | 测速端口（HTTP 用 80） |
-| `-dn` | 10 | 参与下载测速的 IP 数 |
+| `-dn` | 10 | 参与下载测速的 IP 数（仅决定实际测速数量，不再影响最终可用 IP 数量） |
 | `-dt` | 10 | 下载测速超时(秒) |
 | `-sl` | 0 | 速度下限(MB/s)，低于则过滤 |
 | `-dd` | false | 禁用下载测速 |
 | **输出** | | |
 | `-o` | result.csv | 输出 CSV 文件 |
-| `-p` | 10 | 控制台显示条数 |
+| `-p` | 10 | 最终输出的 IP 数量上限（控制台、CSV、静默模式 onlyip.txt 均受此限制；传 0 或负数时按 10 处理） |
 | **其他** | | |
 | `-allip` | false | 全量 IP（默认每/24 随机一个） |
 | `-debug` | false | 调试输出 |

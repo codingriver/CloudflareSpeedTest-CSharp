@@ -130,18 +130,28 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
 
     if (config.Silent)
     {
-        WriteOnlyIp(config, finalResults);
-        if (finalResults.Count > 0)
+        // 统一由 -p 控制最终输出的 IP 数量（静默模式也生效）
+        var limit = config.OutputNum <= 0 ? 10 : config.OutputNum;
+        var outputResults = finalResults.Take(limit).ToList();
+
+        WriteOnlyIp(config, outputResults);
+        // 静默模式下也正常导出 CSV，方便脚本/自动化读取
+        await OutputWriter.ExportCsvAsync(outputResults, config.OutputFile, ct);
+        if (outputResults.Count > 0)
         {
-            foreach (var r in finalResults)
+            foreach (var r in outputResults)
                 Console.WriteLine(r.IP);
         }
     }
     else
     {
+        // 非静默模式下，控制台与 CSV 也统一使用 -p 限制输出 IP 数量
+        var limit = config.OutputNum <= 0 ? 10 : config.OutputNum;
+        var outputResults = finalResults.Take(limit).ToList();
+
         Console.Out.Flush();
-        OutputWriter.PrintToConsole(finalResults, config.OutputNum);
-        await OutputWriter.ExportCsvAsync(finalResults, config.OutputFile, ct);
+        OutputWriter.PrintToConsole(outputResults, config.OutputNum);
+        await OutputWriter.ExportCsvAsync(outputResults, config.OutputFile, ct);
         Console.WriteLine($"结果已保存到 {config.OutputFile}");
         Console.Out.Flush();
     }
@@ -202,11 +212,30 @@ try
     if (scheduleMode != ScheduleMode.None && !config.Silent)
         Console.WriteLine("已退出定时任务。");
 
-    if (scheduleMode == ScheduleMode.None && !config.Silent && !Console.IsInputRedirected)
+    // 仅在 Windows 上、无参数（推测为双击 exe）、且非静默模式时，执行倒计时后自动关闭
+    // 命令行执行（通常会带参数）以及非 Windows 平台不会进入这里
+    if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+        && args.Length == 0
+        && !config.Silent
+        && !Console.IsInputRedirected)
     {
+        const int seconds = 60;
         Console.WriteLine();
-        Console.Write("按回车或任意键退出...");
-        Console.ReadKey(true);
+        Console.WriteLine($"窗口将在 {seconds} 秒后自动关闭...");
+        for (var i = seconds; i > 0; i--)
+        {
+            Console.Write($"\r剩余 {i,2} 秒关闭窗口   ");
+            Console.Out.Flush();
+            try
+            {
+                Task.Delay(1000).Wait();
+            }
+            catch
+            {
+                break;
+            }
+        }
+        Console.WriteLine();
     }
 }
 catch (OperationCanceledException)

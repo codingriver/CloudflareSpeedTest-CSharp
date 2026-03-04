@@ -43,9 +43,20 @@ publish_rid() {
         "$PROJECT_ROOT"
     local exe_path="$out_dir/$exe"
     if [[ -f "$exe_path" ]]; then
-        size=$(wc -c < "$exe_path" 2>/dev/null || echo 0)
+        # 本地打包输出文件名与 GitHub Actions Release 保持一致，且不再放到子文件夹中
+        # 如：cfst-win-x64 / cfst-win-x64.exe / cfst-linux-x64 等
+        local final_name
+        if [[ "$rid" == "win-x64" ]]; then
+            final_name="cfst-${rid}${suffix}.exe"
+        else
+            final_name="cfst-${rid}${suffix}"
+        fi
+        local final_path="$PUBLISH_BASE/$final_name"
+        cp "$exe_path" "$final_path"
+
+        size=$(wc -c < "$final_path" 2>/dev/null || echo 0)
         size_mb=$(awk "BEGIN { printf \"%.2f\", $size / 1048576 }" 2>/dev/null || echo "?")
-        echo "    Output: $out_dir/$exe (${size_mb} MB)"
+        echo "    Output: $final_path (${size_mb} MB)"
     fi
 }
 
