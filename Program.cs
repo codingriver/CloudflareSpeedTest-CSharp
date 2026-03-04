@@ -1,6 +1,5 @@
 using System.Text;
 using CloudflareST;
-using CloudflareST.Models;
 
 static Config ParseArgs(string[] args)
 {

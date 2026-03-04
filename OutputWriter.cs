@@ -1,4 +1,3 @@
-using CloudflareST.Models;
 
 namespace CloudflareST;
 

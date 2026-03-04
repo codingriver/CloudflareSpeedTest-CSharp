@@ -5,7 +5,6 @@ using System.Net.Http.Headers;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Threading.Channels;
-using CloudflareST.Models;
 
 namespace CloudflareST;
 

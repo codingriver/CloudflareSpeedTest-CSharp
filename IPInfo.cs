@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace CloudflareST.Models;
+namespace CloudflareST;
 
 /// <summary>
 /// IP 测速结果

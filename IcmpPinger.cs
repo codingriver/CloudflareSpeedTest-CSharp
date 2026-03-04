@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Threading.Channels;
-using CloudflareST.Models;
 
 namespace CloudflareST;
 

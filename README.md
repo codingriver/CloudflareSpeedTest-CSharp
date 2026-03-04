@@ -141,18 +141,18 @@ dotnet build
 
 ```powershell
 # Windows PowerShell
-.\scripts\build.ps1
-.\scripts\build.ps1 win-x64
-.\scripts\build.ps1 -fd           # 依赖框架版（需 .NET 8，体积 ~几百 KB）
-.\scripts\build.ps1 win-x64 -fd
+.\build\build.ps1
+.\build\build.ps1 win-x64
+.\build\build.ps1 -fd           # 依赖框架版（需 .NET 8，体积 ~几百 KB）
+.\build\build.ps1 win-x64 -fd
 ```
 
 ```bash
 # Linux / macOS / Git Bash
-./scripts/build.sh
-./scripts/build.sh win-x64
-./scripts/build.sh -fd             # 依赖框架版（需 .NET 8，体积 ~几百 KB）
-./scripts/build.sh win-x64 -fd
+./build/build.sh
+./build/build.sh win-x64
+./build/build.sh -fd             # 依赖框架版（需 .NET 8，体积 ~几百 KB）
+./build/build.sh win-x64 -fd
 ```
 
 ### 手动打包
@@ -177,6 +177,7 @@ CloudflareSeedTest-CSharp/
 ├── CloudflareST.csproj
 ├── Program.cs        # 主程序入口
 ├── Config.cs         # 配置
+├── IPInfo.cs         # 数据结构
 ├── IpProvider.cs     # IP 列表加载
 ├── IcmpPinger.cs    # ICMP Ping 延迟测试（默认）
 ├── PingTester.cs    # TCPing 延迟测试
@@ -184,8 +185,7 @@ CloudflareSeedTest-CSharp/
 ├── ColoProvider.cs  # CDN 地区码解析
 ├── SpeedTester.cs   # HTTP 下载测速
 ├── OutputWriter.cs  # 结果输出
-├── Models/IPInfo.cs # 数据结构
-├── scripts/        # 打包脚本
+├── build/          # 打包脚本
 └── docs/           # 使用文档
 ```
 
