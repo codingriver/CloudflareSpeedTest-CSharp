@@ -34,4 +34,16 @@ public class Config
     public bool Debug { get; set; } = false;
     public bool Silent { get; set; } = false;  // -silent/-q 静默模式：仅输出 IP，出错或 0 结果时输出空并写 onlyip.txt
     public string OnlyIpFile { get; set; } = "onlyip.txt";
+
+    // 定时调度
+    public int IntervalMinutes { get; set; } = 0;   // >0 时每 N 分钟执行一次
+    public string? AtTimes { get; set; }           // 每日定点，如 "6:00,18:00"
+    public string? CronExpression { get; set; }     // Cron 表达式
+    public string? TimeZoneId { get; set; }        // 时区，默认本地
+
+    // Hosts 更新
+    public string? HostsDomains { get; set; }     // 要更新/添加的域名，如 "a.com,*.b.com"
+    public int HostsIpIndex { get; set; } = 1;     // 使用测速结果第 N 名 IP（1-based）
+    public string? HostsFilePath { get; set; }     // 自定义 hosts 路径
+    public bool HostsDryRun { get; set; } = false; // 仅输出不写入
 }

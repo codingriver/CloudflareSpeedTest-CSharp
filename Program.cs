@@ -34,7 +34,17 @@ static Config ParseArgs(string[] args)
         CfColo = GetArg(args, "-cfcolo"),
         Debug = GetBool("-debug"),
         Silent = GetBool("-silent") || GetBool("-q"),
-        OnlyIpFile = Get("-onlyip", "onlyip.txt")
+        OnlyIpFile = Get("-onlyip", "onlyip.txt"),
+        // 定时调度
+        IntervalMinutes = GetInt("-interval", 0),
+        AtTimes = GetArg(args, "-at"),
+        CronExpression = GetArg(args, "-cron"),
+        TimeZoneId = GetArg(args, "-tz"),
+        // Hosts
+        HostsDomains = GetArg(args, "-hosts"),
+        HostsIpIndex = GetInt("-hosts-ip", 1),
+        HostsFilePath = GetArg(args, "-hosts-file"),
+        HostsDryRun = GetBool("-hosts-dry-run")
     };
 }
 
@@ -46,23 +56,13 @@ static string? GetArg(string[] args, string key)
     return null;
 }
 
-void WriteOnlyIp(Config cfg, IReadOnlyList<IPInfo> results)
+static void WriteOnlyIp(Config cfg, IReadOnlyList<IPInfo> results)
 {
     var content = results.Count > 0 ? string.Join("\n", results.Select(r => r.IP.ToString())) : "";
     File.WriteAllText(cfg.OnlyIpFile, content);
 }
 
-var config = ParseArgs(args);
-var ct = CancellationToken.None;
-
-if (!config.Silent)
-{
-    ConsoleHelper.DisableQuickEditIfWindows();
-    ConsoleHelper.EnableAutoFlush();
-    try { Console.OutputEncoding = Encoding.UTF8; } catch { }
-}
-
-try
+static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, CancellationToken ct)
 {
     if (!config.Silent) Console.WriteLine("正在加载 IP 列表...");
     var ips = await IpProvider.LoadAsync(config, ct);
@@ -71,12 +71,10 @@ try
     if (ips.Count == 0)
     {
         if (config.Silent)
-        {
             File.WriteAllText(config.OnlyIpFile, "");
-            return;
-        }
-        Console.WriteLine("没有可测速的 IP，请检查 -f 或 -ip 参数。");
-        Environment.Exit(1);
+        else
+            Console.WriteLine("没有可测速的 IP，请检查 -f 或 -ip 参数。");
+        return null;
     }
 
     var pingProgress = config.Silent ? null : new SyncProgress<(int Completed, int Qualified)>(p =>
@@ -138,28 +136,88 @@ try
             foreach (var r in finalResults)
                 Console.WriteLine(r.IP);
         }
-        return;
+    }
+    else
+    {
+        Console.Out.Flush();
+        OutputWriter.PrintToConsole(finalResults, config.OutputNum);
+        await OutputWriter.ExportCsvAsync(finalResults, config.OutputFile, ct);
+        Console.WriteLine($"结果已保存到 {config.OutputFile}");
+        Console.Out.Flush();
     }
 
-    Console.Out.Flush();
-    OutputWriter.PrintToConsole(finalResults, config.OutputNum);
-    await OutputWriter.ExportCsvAsync(finalResults, config.OutputFile, ct);
-    Console.WriteLine($"结果已保存到 {config.OutputFile}");
-    Console.Out.Flush();
+    return finalResults;
+}
 
-    if (!Console.IsInputRedirected)
+var config = ParseArgs(args);
+var scheduleMode = Scheduler.GetMode(config);
+
+// 多参数冲突时提示
+var scheduleParams = new[] { config.CronExpression, config.AtTimes, config.IntervalMinutes > 0 ? "interval" : null }.Where(x => !string.IsNullOrEmpty(x)).ToList();
+if (scheduleParams.Count > 1 && !config.Silent)
+    Console.WriteLine($"提示: 同时指定了多个调度参数，将使用 -cron > -at > -interval 优先级，当前采用 {scheduleMode} 模式。");
+
+var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+
+if (!config.Silent)
+{
+    ConsoleHelper.DisableQuickEditIfWindows();
+    ConsoleHelper.EnableAutoFlush();
+    try { Console.OutputEncoding = Encoding.UTF8; } catch { }
+}
+
+try
+{
+    do
+    {
+        var finalResults = await RunSpeedTestAsync(config, cts.Token);
+        if (finalResults == null)
+        {
+            if (config.Silent) return;
+            Environment.Exit(1);
+        }
+
+        // Hosts 更新（dry-run 时始终输出）
+        if (!string.IsNullOrWhiteSpace(config.HostsDomains) && finalResults.Count > 0)
+        {
+            var log = (config.HostsDryRun || !config.Silent) ? (Action<string>)Console.WriteLine : null;
+            HostsUpdater.Update(config, finalResults, log);
+        }
+
+        if (scheduleMode == ScheduleMode.None)
+            break;
+
+        if (!config.Silent)
+            Console.WriteLine($"下次执行: {scheduleMode} 模式，等待中... (Ctrl+C 退出)");
+
+        var ok = await Scheduler.WaitUntilNextAsync(config, scheduleMode, cts.Token);
+        if (!ok) break;
+
+        if (!config.Silent)
+            Console.WriteLine();
+    }
+    while (!cts.Token.IsCancellationRequested);
+
+    if (scheduleMode != ScheduleMode.None && !config.Silent)
+        Console.WriteLine("已退出定时任务。");
+
+    if (scheduleMode == ScheduleMode.None && !config.Silent && !Console.IsInputRedirected)
     {
         Console.WriteLine();
         Console.Write("按回车或任意键退出...");
         Console.ReadKey(true);
     }
 }
+catch (OperationCanceledException)
+{
+    if (!config.Silent)
+        Console.WriteLine("\n已取消。");
+}
 catch (Exception)
 {
     if (config.Silent)
-    {
         File.WriteAllText(config.OnlyIpFile, "");
-        return;
-    }
-    throw;
+    else
+        throw;
 }
