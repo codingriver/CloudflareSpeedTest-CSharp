@@ -1,43 +1,75 @@
 # Cloudflare Speed Test - C# 版
 
-基于 [XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest) 的 C# 实现，用于从 Cloudflare CDN IP 中筛选延迟低、速度快的节点。
-
-## 功能
-
-- **ICMP Ping 延迟测试**（默认）：使用 `System.Net.NetworkInformation.Ping`，简单快捷
-- **TCPing 延迟测试**：`-tcping` 时使用，并发测速，串行多次取平均
-- **HTTPing 延迟测试**：`-httping` 时使用，HTTP HEAD 测应用层延迟，支持地区码解析与过滤
-- **多 CDN 地区码**：支持 Cloudflare、AWS、Fastly、CDN77、Bunny、Gcore
-- **HTTP 下载测速**：通过 ConnectCallback 绑定到待测 IP
-- **IP 列表**：本地 ip.txt/ipv6.txt，缺失时从 [CloudflareIP-Sync](https://github.com/codingriver/CloudflareIP-Sync) 经 jsDelivr CDN 自动下载
-- **CSV 导出**：含地区码、地区中文列
-
-## 环境
-
-- .NET 8.0 运行时（或使用单文件发布的可执行文件，无需安装）
-- Windows / Linux / macOS
-
-## 编译
-
-```bash
-dotnet build
-```
+从 Cloudflare CDN 的众多 IP 中，帮你测出**延迟低、速度快**的节点，方便自建优选或配置代理。基于 [XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest) 的 C# 实现。
 
 ## 快速开始
 
-```bash
-# 默认运行（ICMP 延迟 + 下载测速）
-./cfst
+### Windows
 
-# Windows
-.\cfst.exe
+在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载 `cfst-win-x64.exe`，双击或命令行运行：
+
+```powershell
+.\cfst-win-x64.exe
 ```
 
-首次运行若本地无 `ip.txt`，会自动从 CDN 下载 Cloudflare IP 段。
+**测速方式**：默认用 ICMP Ping。如果测不出结果或结果异常，可能是网络禁用了 ICMP，可改用 `-tcping` 或 `-httping`。
+
+```powershell
+# 以下任选其一
+.\cfst-win-x64.exe                                    # ICMP Ping（默认）
+.\cfst-win-x64.exe -tcping                             # TCPing：走 TCP 443，无需 ICMP 权限
+.\cfst-win-x64.exe -httping                            # HTTPing（使用默认 URL）
+.\cfst-win-x64.exe -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+```
+
+### Linux
+
+在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载 `cfst-linux-x64` 后执行：
+
+```bash
+chmod +x cfst-linux-x64
+./cfst-linux-x64
+```
+
+**测速方式**：默认 ICMP Ping。测不出结果时改用 `-tcping` 或 `-httping`。
+
+```bash
+./cfst-linux-x64                                      # ICMP Ping（默认）
+./cfst-linux-x64 -tcping                               # TCPing：走 TCP 443，无需 ICMP 权限
+./cfst-linux-x64 -httping                              # HTTPing（使用默认 URL）
+./cfst-linux-x64 -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+```
+
+### macOS
+
+在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载：Intel 用 `cfst-osx-x64`，Apple Silicon 用 `cfst-osx-arm64`。
+
+```bash
+chmod +x cfst-osx-x64    # 或 cfst-osx-arm64
+./cfst-osx-x64           # 或 ./cfst-osx-arm64
+```
+
+**测速方式**：默认 ICMP Ping。测不出结果时改用 `-tcping` 或 `-httping`。
+
+```bash
+# Intel
+./cfst-osx-x64                                        # ICMP Ping（默认）
+./cfst-osx-x64 -tcping                                 # TCPing：走 TCP 443，无需 ICMP 权限
+./cfst-osx-x64 -httping                                # HTTPing（使用默认 URL）
+./cfst-osx-x64 -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+
+# Apple Silicon
+./cfst-osx-arm64                                       # ICMP Ping（默认）
+./cfst-osx-arm64 -tcping                                # TCPing
+./cfst-osx-arm64 -httping                               # HTTPing（使用默认 URL）
+./cfst-osx-arm64 -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+```
+
+首次运行会自动下载 Cloudflare IP 列表到 `ip.txt`，无需手动准备。
 
 ## 常用示例
 
-### 仅测延迟（不测下载速度）
+### 只测延迟
 
 ```bash
 ./cfst -dd
@@ -45,17 +77,18 @@ dotnet build
 ./cfst -httping -dd
 ```
 
-### 指定下载测速 URL
+### 换测速地址
 
 ```bash
-# HTTP 测速（端口 80）
+# 用 HTTP 测速（端口 80）
 ./cfst -url "http://speedtest.303066.xyz/__down?bytes=104857600" -tp 80
+./cfst -url "http://speed.cloudflare.com/__down?bytes=52428800"
 
-# Cloudflare 官方测速（HTTPS）
+# 用 Cloudflare 官方测速（推荐）
 ./cfst -url "https://speed.cloudflare.com/__down?bytes=52428800"
 ```
 
-### 限制加载 IP 数量
+### 限制测速 IP 数量
 
 ```bash
 ./cfst -ipn 2000
@@ -69,36 +102,46 @@ dotnet build
 ./cfst -f my-ip.txt
 ```
 
-### 延迟测速模式
-
-```bash
-./cfst              # ICMP Ping（默认）
-./cfst -tcping      # TCPing（推荐，无需 ICMP 权限）
-./cfst -httping -url "https://cf.xiu2.xyz/url"  # HTTPing + 地区码
-```
-
-### 地区码过滤（仅 HTTPing）
+### 按地区筛选（仅 HTTPing）
 
 ```bash
 ./cfst -httping -cfcolo "HKG,NRT,LAX"
 ```
 
-### 全量 IP 与并发调整
+### 调高并发
 
 ```bash
 ./cfst -allip
 ./cfst -n 500 -dn 20 -t 8
 ```
 
-### 静默模式（仅输出 IP）
+### 静默模式（只输出 IP）
 
 ```bash
-# 只输出 IP 地址，每行一个，无其他输出；出错或 0 结果时输出空并写 onlyip.txt
 ./cfst -silent
 ./cfst -q
 ```
 
-适用于脚本调用、管道等场景。
+适合脚本、管道等自动化场景。
+
+## 功能
+
+- **三种测速方式**：ICMP Ping（默认）、TCPing（无需 ICMP 权限）、HTTPing（可测地区码）
+- **下载测速**：测延迟后还会测下载速度，结果更直观
+- **地区码**：支持 Cloudflare、AWS、Fastly、CDN77、Bunny、Gcore
+- **IP 列表**：缺 `ip.txt` 时自动从 CloudflareIP-Sync 下载
+- **CSV 导出**：含地区码、地区中文名
+
+## 环境
+
+- Windows / Linux / macOS
+- 无需安装 .NET：直接下载 Release 的可执行文件即可
+
+## 编译
+
+```bash
+dotnet build
+```
 
 ## 参数一览
 
@@ -120,7 +163,7 @@ dotnet build
 | `-httping-code` | 0 | 有效状态码，0=200/301/302 |
 | `-cfcolo` | - | 地区码过滤（仅 HTTPing） |
 | **下载测速** | | |
-| `-url` | 见 Config | 测速下载地址 |
+| `-url` | Cloudflare 官方 | 测速下载地址 |
 | `-tp` | 443 | 测速端口（HTTP 用 80） |
 | `-dn` | 10 | 参与下载测速的 IP 数 |
 | `-dt` | 10 | 下载测速超时(秒) |
@@ -132,43 +175,28 @@ dotnet build
 | **其他** | | |
 | `-allip` | false | 全量 IP（默认每/24 随机一个） |
 | `-debug` | false | 调试输出 |
-| `-silent` / `-q` | false | 静默模式：仅输出 IP（每行一个），无其他输出；出错或 0 结果时输出空并写 onlyip.txt |
+| `-silent` / `-q` | false | 静默模式：只输出 IP，每行一个，适合脚本调用 |
 | `-onlyip` | onlyip.txt | 静默模式下的 IP 输出文件 |
 
-## 单文件发布
+## 自行打包
 
-### 一键打包（推荐）
+需要从源码构建时，可用脚本一键打包：
 
 ```powershell
-# Windows PowerShell
+# Windows
 .\build\build.ps1
 .\build\build.ps1 win-x64
-.\build\build.ps1 -fd           # 依赖框架版（需 .NET 8，体积 ~几百 KB）
-.\build\build.ps1 win-x64 -fd
+.\build\build.ps1 -fd           # 依赖框架版，体积小，需本机安装 .NET 8
 ```
 
 ```bash
-# Linux / macOS / Git Bash
+# Linux / macOS
 ./build/build.sh
 ./build/build.sh win-x64
-./build/build.sh -fd             # 依赖框架版（需 .NET 8，体积 ~几百 KB）
-./build/build.sh win-x64 -fd
+./build/build.sh -fd
 ```
 
-### 手动打包
-
-```bash
-# 自包含（默认）
-dotnet publish -r win-x64 -c Release --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true -o publish/win-x64
-dotnet publish -r linux-x64 -c Release --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true -o publish/linux-x64
-dotnet publish -r osx-x64 -c Release --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true -o publish/osx-x64
-dotnet publish -r osx-arm64 -c Release --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true -o publish/osx-arm64
-
-# 依赖框架（需安装 .NET 8，体积小，不支持 Trimmed/Compression）
-dotnet publish -r win-x64 -c Release --self-contained false -p:PublishSingleFile=true -p:PublishTrimmed=false -o publish/win-x64-fd
-```
-
-输出在 `publish/<rid>/` 或 `publish/<rid>-fd/` 目录。
+输出在 `publish/` 目录下。
 
 ## 项目结构
 
@@ -191,7 +219,9 @@ CloudflareSeedTest-CSharp/
 
 ## 输出说明
 
-### 控制台表格
+### 控制台
+
+运行后会显示表格，包含 IP、丢包率、延迟、下载速度、地区码等：
 
 ```
 序号    IP 地址            丢包率    平均延迟    下载速度      地区码    地区
@@ -201,6 +231,8 @@ CloudflareSeedTest-CSharp/
 
 ### CSV 文件
 
+结果会保存到 `result.csv`（可用 `-o` 指定），方便导入 Excel 或脚本：
+
 ```csv
 IP,丢包率,平均延迟(ms),下载速度(Mbps),地区码,地区
 104.19.55.123,0.00%,50,82.63,HKG,香港
@@ -208,23 +240,23 @@ IP,丢包率,平均延迟(ms),下载速度(Mbps),地区码,地区
 
 ## 地区码说明
 
-- **默认模式（ICMP/TCPing）**：地区码在**下载测速**时从 HTTP 响应头解析
-- **HTTPing 模式**：地区码在延迟测速时即可获取，支持 `-cfcolo` 过滤
-- 支持 CDN：Cloudflare、AWS CloudFront、Fastly、CDN77、Bunny、Gcore
+- **ICMP/TCPing**：地区码在下载测速时从 HTTP 响应头解析
+- **HTTPing**：测延迟时就能拿到地区码，可用 `-cfcolo` 筛选（如 HKG、NRT、LAX）
+- 支持 Cloudflare、AWS、Fastly、CDN77、Bunny、Gcore
 
 ## 常见问题
 
-**Q: 本地没有 ip.txt 怎么办？**  
-A: 程序会自动从 [CloudflareIP-Sync](https://github.com/codingriver/CloudflareIP-Sync) 经 jsDelivr CDN 下载，并保存到当前目录。
+**Q: 没有 ip.txt 怎么办？**  
+A: 首次运行会自动下载，无需手动准备。
 
-**Q: 如何只测延迟不测下载？**  
-A: 使用 `-dd` 参数。
+**Q: 只想测延迟，不测下载？**  
+A: 加 `-dd` 参数。
 
-**Q: TCPing 和 ICMP 有什么区别？**  
-A: ICMP 需要系统允许 Ping；TCPing 走 TCP 443 端口，无需特殊权限，推荐在受限环境使用。
+**Q: TCPing 和 ICMP 有啥区别？**  
+A: ICMP 需要系统允许 Ping；TCPing 走 TCP 443，不依赖 ICMP，网络受限时更稳。
 
 **Q: 测速 URL 用 HTTP 还是 HTTPS？**  
-A: 根据 URL 协议自动选择端口（HTTP=80，HTTPS=443），需用 `-tp` 与 URL 一致。
+A: 都行，端口要对应：HTTP 用 80，HTTPS 用 443，用 `-tp` 指定。
 
 ## 参考
 

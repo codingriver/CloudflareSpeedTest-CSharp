@@ -17,7 +17,7 @@ static Config ParseArgs(string[] args)
         PingThreads = GetInt("-n", 200),
         PingCount = GetInt("-t", 4),
         Port = GetInt("-tp", 443),
-        SpeedUrl = Get("-url", "http://speedtest.303066.xyz/__down?bytes=104857600"),
+        SpeedUrl = Get("-url", "https://speed.cloudflare.com/__down?bytes=52428800"),
         SpeedNum = GetInt("-dn", 10),
         DownloadTimeoutSeconds = GetInt("-dt", 10),
         DelayThresholdMs = GetInt("-tl", 9999),
