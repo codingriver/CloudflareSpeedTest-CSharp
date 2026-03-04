@@ -44,8 +44,9 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Publish ${{ matrix.rid }}${{ matrix.suffix }}
+        shell: bash
         run: |
-          dotnet publish -r ${{ matrix.rid }} -c Release --self-contained ${{ matrix.self_contained }} \
+          dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -c Release --self-contained ${{ matrix.self_contained }} \
             -p:PublishSingleFile=true \
             -p:PublishTrimmed=${{ matrix.self_contained }} \
             -p:EnableCompressionInSingleFile=${{ matrix.self_contained }} \
