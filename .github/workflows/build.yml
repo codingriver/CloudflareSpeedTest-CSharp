@@ -61,17 +61,20 @@ jobs:
           name: cfst-${{ matrix.rid }}${{ matrix.suffix }}
           path: publish/${{ matrix.rid }}${{ matrix.suffix }}/${{ matrix.exe }}
 
-  # 汇总所有平台的产物，便于下载
-  package:
+  # 推送 tag 时创建 GitHub Release（各平台独立文件）
+  release:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create release archive
+      - name: Prepare release files
         run: |
           mkdir -p release
           cp artifacts/cfst-win-x64/cfst.exe release/cfst-win-x64.exe
@@ -79,31 +82,15 @@ jobs:
           cp artifacts/cfst-osx-x64/cfst release/cfst-osx-x64
           cp artifacts/cfst-osx-arm64/cfst release/cfst-osx-arm64
           chmod +x release/cfst-linux-x64 release/cfst-osx-x64 release/cfst-osx-arm64
-          cd release && zip -r ../cfst-release.zip . && cd ..
-
-      - name: Upload release package
-        uses: actions/upload-artifact@v4
-        with:
-          name: cfst-release
-          path: cfst-release.zip
-
-  # 推送 tag 时创建 GitHub Release
-  release:
-    needs: package
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download cfst-release
-        uses: actions/download-artifact@v4
-        with:
-          name: cfst-release
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: cfst-release.zip
+          files: |
+            release/cfst-win-x64.exe
+            release/cfst-linux-x64
+            release/cfst-osx-x64
+            release/cfst-osx-arm64
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
