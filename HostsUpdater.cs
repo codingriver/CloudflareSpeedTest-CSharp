@@ -70,7 +70,12 @@ public static class HostsUpdater
         }
         catch (UnauthorizedAccessException)
         {
-            log?.Invoke($"无权限写入 hosts，请以管理员运行。待写入内容已输出到 hosts-pending.txt");
+            // 即使在 -silent/-q 模式下也要输出权限错误提示
+            var msg = "无权限写入 hosts，请以管理员/root 权限运行。本次待写入内容已输出到 hosts-pending.txt";
+            if (log is not null)
+                log(msg);
+            else
+                Console.WriteLine(msg);
             File.WriteAllText("hosts-pending.txt", newContent);
             return false;
         }

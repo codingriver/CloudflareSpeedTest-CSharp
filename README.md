@@ -141,6 +141,7 @@ chmod +x cfst-osx-x64    # 或 cfst-osx-arm64
 ```
 
 ### Hosts 自动更新
+**Hosts写入更新 Windows 需以管理员运行；Linux/macOS 需 root 或 sudo。无权限时内容会输出到 hosts-pending.txt。**
 
 ```bash
 # 测速后更新 hosts，有则更新、无则添加
@@ -151,6 +152,7 @@ chmod +x cfst-osx-x64    # 或 cfst-osx-arm64
 ```
 
 ### 定时调度 + Hosts 综合示例
+**Hosts写入更新 Windows 需以管理员运行；Linux/macOS 需 root 或 sudo。无权限时内容会输出到 hosts-pending.txt。**
 
 ```bash
 # TCPing 测速，每 12 小时执行，更新 hosts
