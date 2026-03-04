@@ -1,0 +1,86 @@
+name: Build & Package
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 自包含（无需安装 .NET，体积大 ~50MB）
+          - rid: win-x64
+            exe: cfst.exe
+            os: windows-latest
+            self_contained: true
+            suffix: ''
+          - rid: linux-x64
+            exe: cfst
+            os: ubuntu-latest
+            self_contained: true
+            suffix: ''
+          - rid: osx-x64
+            exe: cfst
+            os: macos-latest
+            self_contained: true
+            suffix: ''
+          - rid: osx-arm64
+            exe: cfst
+            os: macos-14
+            self_contained: true
+            suffix: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish ${{ matrix.rid }}${{ matrix.suffix }}
+        run: |
+          dotnet publish -r ${{ matrix.rid }} -c Release --self-contained ${{ matrix.self_contained }} \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=${{ matrix.self_contained }} \
+            -p:EnableCompressionInSingleFile=${{ matrix.self_contained }} \
+            -o publish/${{ matrix.rid }}${{ matrix.suffix }}
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+      - name: Upload artifact (cfst-${{ matrix.rid }}${{ matrix.suffix }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfst-${{ matrix.rid }}${{ matrix.suffix }}
+          path: publish/${{ matrix.rid }}${{ matrix.suffix }}/${{ matrix.exe }}
+
+  # 汇总所有平台的产物，便于下载
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release archive
+        run: |
+          mkdir -p release
+          cp artifacts/cfst-win-x64/cfst.exe release/cfst-win-x64.exe
+          cp artifacts/cfst-linux-x64/cfst release/cfst-linux-x64
+          cp artifacts/cfst-osx-x64/cfst release/cfst-osx-x64
+          cp artifacts/cfst-osx-arm64/cfst release/cfst-osx-arm64
+          chmod +x release/cfst-linux-x64 release/cfst-osx-x64 release/cfst-osx-arm64
+          cd release && zip -r ../cfst-release.zip . && cd ..
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfst-release
+          path: cfst-release.zip
