@@ -31,7 +31,8 @@ public static class IpProvider
     ];
 
     /// <summary>
-    /// 加载待测 IP 列表
+    /// 加载待测 IP 列表。默认仅加载 ip.txt（IPv4），-ipv6 时仅加载 ipv6.txt（IPv6）。
+    /// 指定 -ip 或 -f/-f6 文件时，不按类型过滤，解析到啥就测啥。
     /// </summary>
     public static async Task<IReadOnlyList<IPAddress>> LoadAsync(Config config, CancellationToken ct = default)
     {
@@ -39,19 +40,32 @@ public static class IpProvider
 
         if (!string.IsNullOrEmpty(config.IpRanges))
         {
-            ranges.AddRange(config.IpRanges.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            var parts = config.IpRanges.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var p in parts)
+            {
+                var trimmed = p.Trim();
+                if (!string.IsNullOrEmpty(trimmed))
+                    ranges.Add(trimmed);
+            }
         }
 
         if (ranges.Count == 0)
         {
-            await EnsureAndLoadFileAsync(config.IpFile, IpUrls, ranges, config.Silent, ct);
-            var ipv6Path = Path.Combine(Path.GetDirectoryName(config.IpFile) ?? ".", config.IpFileV6);
-            await EnsureAndLoadFileAsync(ipv6Path, Ipv6Urls, ranges, config.Silent, ct);
+            if (config.Ipv6Only)
+            {
+                var ipv6Path = Path.Combine(Path.GetDirectoryName(config.IpFile) ?? ".", config.IpFileV6);
+                await EnsureAndLoadFileAsync(ipv6Path, Ipv6Urls, ranges, config.Silent, ct);
+            }
+            else
+            {
+                await EnsureAndLoadFileAsync(config.IpFile, IpUrls, ranges, config.Silent, ct);
+            }
         }
 
         if (ranges.Count == 0)
         {
-            throw new InvalidOperationException("无法获取 IP 列表：请提供 -ip 参数、本地 ip.txt/ipv6.txt，或确保网络可访问 CDN 下载。");
+            var hint = config.Ipv6Only ? "ipv6.txt" : "ip.txt";
+            throw new InvalidOperationException($"无法获取 IP 列表：请提供 -ip 参数、本地 {hint}，或确保网络可访问 CDN 下载。");
         }
 
         var result = new List<IPAddress>();
@@ -78,6 +92,7 @@ public static class IpProvider
 
         return result;
     }
+
 
     private static async Task EnsureAndLoadFileAsync(string path, string[] urls, List<string> ranges, bool silent, CancellationToken ct)
     {

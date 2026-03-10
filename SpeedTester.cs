@@ -43,7 +43,7 @@ public static class SpeedTester
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (speedMbps, colo) = await DownloadSpeedAsync(info.IP, config.SpeedUrl, config.Port, config.DownloadTimeoutSeconds);
+                    var (speedMbps, colo) = await DownloadSpeedAsync(info.IP, config.SpeedUrl, config.Port, config.DownloadTimeoutSeconds, config);
                     // 只记录测速结果，不在此阶段做过滤
                     if (!string.IsNullOrEmpty(colo))
                         speedMap[info.IP] = (speedMbps, colo);
@@ -126,7 +126,8 @@ public static class SpeedTester
         IPAddress ip,
         string url,
         int port,
-        int timeoutSec)
+        int timeoutSec,
+        Config config)
     {
         try
         {
@@ -136,6 +137,8 @@ public static class SpeedTester
 
             var handler = new SocketsHttpHandler
             {
+                UseProxy = config.UseProxy,
+                Proxy = config.UseProxy ? GetProxy(config) : null,
                 ConnectCallback = async (context, token) =>
                 {
                     var socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
@@ -195,6 +198,19 @@ public static class SpeedTester
         {
             return (0, "");
         }
+    }
+
+    /// <summary>
+    /// 根据配置获取代理
+    /// </summary>
+    private static IWebProxy GetProxy(Config config)
+    {
+        if (!string.IsNullOrEmpty(config.ProxyUrl))
+        {
+            return new WebProxy(config.ProxyUrl);
+        }
+        // ProxyUrl 为空但 UseProxy=true 时，使用系统环境变量代理
+        return WebRequest.DefaultWebProxy;
     }
 
 }

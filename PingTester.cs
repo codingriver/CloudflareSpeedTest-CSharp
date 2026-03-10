@@ -36,20 +36,16 @@ public static class PingTester
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, totalDelayMs) = await TcpPingAsync(ip, config.Port, config.TimeoutMs, config.PingCount);
-                    var info = new IPInfo
+                    var (received, delays) = await TcpPingAsync(ip, config.Port, config.TimeoutMs, config.PingCount);
+                    if (received > 0)
                     {
-                        IP = ip,
-                        Sended = config.PingCount,
-                        Received = received,
-                        DelayMs = received > 0 ? totalDelayMs / received : 0
-                    };
-                    if (received > 0 &&
-                        info.DelayMs <= config.DelayThresholdMs &&
-                        info.DelayMs >= config.DelayMinMs &&
-                        info.LossRate <= config.LossRateThreshold)
-                    {
-                        results.Add(info);
+                        var info = CreateIPInfo(ip, config.PingCount, received, delays);
+                        if (info.DelayMs <= config.DelayThresholdMs &&
+                            info.DelayMs >= config.DelayMinMs &&
+                            info.LossRate <= config.LossRateThreshold)
+                        {
+                            results.Add(info);
+                        }
                     }
                 }
                 finally
@@ -66,28 +62,56 @@ public static class PingTester
     }
 
     /// <summary>
+    /// 创建 IPInfo，包含 Jitter 计算
+    /// </summary>
+    private static IPInfo CreateIPInfo(IPAddress ip, int sended, int received, List<double> delays)
+    {
+        var info = new IPInfo
+        {
+            IP = ip,
+            Sended = sended,
+            Received = received,
+            DelayMs = delays.Count > 0 ? delays.Average() : 0
+        };
+
+        if (delays.Count > 1)
+        {
+            var mean = delays.Average();
+            var sumSquaredDiff = delays.Sum(d => Math.Pow(d - mean, 2));
+            info.JitterMs = Math.Sqrt(sumSquaredDiff / delays.Count);
+            info.MinDelayMs = delays.Min();
+            info.MaxDelayMs = delays.Max();
+        }
+        else if (delays.Count == 1)
+        {
+            info.MinDelayMs = delays[0];
+            info.MaxDelayMs = delays[0];
+        }
+
+        return info;
+    }
+
+    /// <summary>
     /// 单 IP TCPing，串行 pingTimes 次
     /// </summary>
-    public static async Task<(int received, double totalDelayMs)> TcpPingAsync(
+    public static async Task<(int received, List<double> delays)> TcpPingAsync(
         IPAddress ip,
         int port,
         int timeoutMs,
         int pingTimes)
     {
-        var received = 0;
-        var totalDelayMs = 0.0;
+        var delays = new List<double>(pingTimes);
 
         for (var i = 0; i < pingTimes; i++)
         {
             var rtt = await TcpPingOnceAsync(ip, port, timeoutMs);
             if (rtt.HasValue)
             {
-                received++;
-                totalDelayMs += rtt.Value;
+                delays.Add(rtt.Value);
             }
         }
 
-        return (received, totalDelayMs);
+        return (delays.Count, delays);
     }
 
     /// <summary>
