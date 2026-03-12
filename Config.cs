@@ -16,7 +16,6 @@ public class Config
     public int Port { get; set; } = 443;
     public string IpFile { get; set; } = "ip.txt";
     public string IpFileV6 { get; set; } = "ipv6.txt";
-    public bool Ipv6Only { get; set; } = false;  // -ipv6 时仅测 IPv6，默认仅测 IPv4
     public string? IpRanges { get; set; }
     public int MaxIpCount { get; set; } = 0;  // 0=不限制，>0 时随机抽取指定数量
     public string OutputFile { get; set; } = "result.csv";
@@ -42,17 +41,9 @@ public class Config
     public string? CronExpression { get; set; }     // Cron 表达式
     public string? TimeZoneId { get; set; }        // 时区，默认本地
 
-    // Hosts 更新 - 格式: "N 域名1, N 域名2, 域名3"
-    // N 为测速结果排名（0=最快），不填默认 0
-    public string? HostsDomains { get; set; }     
+    // Hosts 更新
+    public string? HostsDomains { get; set; }     // 要更新/添加的域名，如 "a.com,*.b.com"
+    public int HostsIpIndex { get; set; } = 1;     // 使用测速结果第 N 名 IP（1-based）
     public string? HostsFilePath { get; set; }     // 自定义 hosts 路径
     public bool HostsDryRun { get; set; } = false; // 仅输出不写入
-
-    // API 服务器
-    public bool EnableApi { get; set; } = false;
-    public int ApiPort { get; set; } = 8080;
-
-    // 代理设置
-    public bool UseProxy { get; set; } = false;          // 是否使用代理，默认不代理
-    public string? ProxyUrl { get; set; }                 // 自定义代理 URL，为空时使用环境变量代理
 }

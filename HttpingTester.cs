@@ -40,16 +40,21 @@ public static class HttpingTester
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, delays, colo) = await HttpingAsync(ip, config);
-                    if (received > 0)
+                    var (received, totalDelayMs, colo) = await HttpingAsync(ip, config);
+                    var info = new IPInfo
                     {
-                        var info = CreateIPInfo(ip, config.PingCount, received, delays, colo);
-                        if (info.DelayMs <= config.DelayThresholdMs &&
-                            info.DelayMs >= config.DelayMinMs &&
-                            info.LossRate <= config.LossRateThreshold)
-                        {
-                            results.Add(info);
-                        }
+                        IP = ip,
+                        Sended = config.PingCount,
+                        Received = received,
+                        DelayMs = received > 0 ? totalDelayMs / received : 0,
+                        Colo = colo ?? ""
+                    };
+                    if (received > 0 &&
+                        info.DelayMs <= config.DelayThresholdMs &&
+                        info.DelayMs >= config.DelayMinMs &&
+                        info.LossRate <= config.LossRateThreshold)
+                    {
+                        results.Add(info);
                     }
                 }
                 finally
@@ -66,43 +71,11 @@ public static class HttpingTester
     }
 
     /// <summary>
-    /// 创建 IPInfo，包含 Jitter 计算
-    /// </summary>
-    private static IPInfo CreateIPInfo(IPAddress ip, int sended, int received, List<double> delays, string? colo)
-    {
-        var info = new IPInfo
-        {
-            IP = ip,
-            Sended = sended,
-            Received = received,
-            DelayMs = delays.Count > 0 ? delays.Average() : 0,
-            Colo = colo ?? ""
-        };
-
-        if (delays.Count > 1)
-        {
-            var mean = delays.Average();
-            var sumSquaredDiff = delays.Sum(d => Math.Pow(d - mean, 2));
-            info.JitterMs = Math.Sqrt(sumSquaredDiff / delays.Count);
-            info.MinDelayMs = delays.Min();
-            info.MaxDelayMs = delays.Max();
-        }
-        else if (delays.Count == 1)
-        {
-            info.MinDelayMs = delays[0];
-            info.MaxDelayMs = delays[0];
-        }
-
-        return info;
-    }
-
-    /// <summary>
     /// 单 IP HTTPing：预检 + 循环测延迟
     /// </summary>
-    public static async Task<(int received, List<double> delays, string? colo)> HttpingAsync(IPAddress ip, Config config)
+    public static async Task<(int received, double totalDelayMs, string? colo)> HttpingAsync(IPAddress ip, Config config)
     {
         var allowedColos = ColoProvider.ParseCfColo(config.CfColo);
-        var delays = new List<double>(config.PingCount);
 
         try
         {
@@ -110,7 +83,7 @@ public static class HttpingTester
             var host = uri.Host ?? uri.DnsSafeHost;
             var targetPort = uri.Port > 0 ? uri.Port : config.Port;
 
-            var handler = CreateHandler(ip, host, targetPort, uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase), config);
+            var handler = CreateHandler(ip, host, targetPort, uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase));
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(config.HttpingTimeoutSeconds) };
 
             // 预检
@@ -121,13 +94,15 @@ public static class HttpingTester
             if (config.Debug)
                 Console.WriteLine($"[调试] IP: {ip}, StatusCode: {(int)preResp.StatusCode}, URL: {config.SpeedUrl}");
             if (!IsValidStatusCode((int)preResp.StatusCode, config))
-                return (0, delays, null);
+                return (0, 0, null);
 
             var colo = ColoProvider.GetColoFromHeaders(preResp.Headers);
             if (!ColoProvider.IsColoAllowed(colo, allowedColos))
-                return (0, delays, null);
+                return (0, 0, null);
 
             // 循环测延迟
+            var received = 0;
+            var totalMs = 0.0;
             for (var i = 0; i < config.PingCount; i++)
             {
                 using var req = new HttpRequestMessage(HttpMethod.Head, config.SpeedUrl);
@@ -142,28 +117,27 @@ public static class HttpingTester
                     var code = (int)resp.StatusCode;
                     if (code == 200 || code == 301 || code == 302)
                     {
-                        delays.Add(sw.Elapsed.TotalMilliseconds);
+                        received++;
+                        totalMs += sw.Elapsed.TotalMilliseconds;
                     }
                 }
                 catch { }
             }
 
-            return (delays.Count, delays, colo);
+            return (received, totalMs, colo);
         }
         catch (Exception ex)
         {
             if (config.Debug)
                 Console.WriteLine($"[调试] IP: {ip}, 异常: {ex.Message}");
-            return (0, delays, null);
+            return (0, 0, null);
         }
     }
 
-    private static SocketsHttpHandler CreateHandler(IPAddress ip, string host, int port, bool useHttps, Config config)
+    private static SocketsHttpHandler CreateHandler(IPAddress ip, string host, int port, bool useHttps)
     {
         return new SocketsHttpHandler
         {
-            UseProxy = config.UseProxy,
-            Proxy = config.UseProxy ? GetProxy(config) : null,
             ConnectCallback = async (context, token) =>
             {
                 var socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
@@ -189,18 +163,5 @@ public static class HttpingTester
         if (config.HttpingStatusCode == 0)
             return code == 200 || code == 301 || code == 302;
         return code == config.HttpingStatusCode;
-    }
-
-    /// <summary>
-    /// 根据配置获取代理
-    /// </summary>
-    private static IWebProxy GetProxy(Config config)
-    {
-        if (!string.IsNullOrEmpty(config.ProxyUrl))
-        {
-            return new WebProxy(config.ProxyUrl);
-        }
-        // ProxyUrl 为空但 UseProxy=true 时，使用系统环境变量代理
-        return WebRequest.DefaultWebProxy;
     }
 }

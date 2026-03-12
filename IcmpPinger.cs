@@ -36,16 +36,20 @@ public static class IcmpPinger
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, delays) = await IcmpPingAsync(ip, config.TimeoutMs, config.PingCount);
-                    if (received > 0)
+                    var (received, totalDelayMs) = await IcmpPingAsync(ip, config.TimeoutMs, config.PingCount);
+                    var info = new IPInfo
                     {
-                        var info = CreateIPInfo(ip, config.PingCount, received, delays);
-                        if (info.DelayMs <= config.DelayThresholdMs &&
-                            info.DelayMs >= config.DelayMinMs &&
-                            info.LossRate <= config.LossRateThreshold)
-                        {
-                            results.Add(info);
-                        }
+                        IP = ip,
+                        Sended = config.PingCount,
+                        Received = received,
+                        DelayMs = received > 0 ? totalDelayMs / received : 0
+                    };
+                    if (received > 0 &&
+                        info.DelayMs <= config.DelayThresholdMs &&
+                        info.DelayMs >= config.DelayMinMs &&
+                        info.LossRate <= config.LossRateThreshold)
+                    {
+                        results.Add(info);
                     }
                 }
                 finally
@@ -62,47 +66,15 @@ public static class IcmpPinger
     }
 
     /// <summary>
-    /// 创建 IPInfo，包含 Jitter 计算
+    /// 单 IP ICMP Ping，串行 pingTimes 次，取平均延迟
     /// </summary>
-    private static IPInfo CreateIPInfo(IPAddress ip, int sended, int received, List<double> delays)
-    {
-        var info = new IPInfo
-        {
-            IP = ip,
-            Sended = sended,
-            Received = received,
-            DelayMs = delays.Count > 0 ? delays.Average() : 0
-        };
-
-        if (delays.Count > 1)
-        {
-            // 计算 Jitter（标准差）
-            var mean = delays.Average();
-            var sumSquaredDiff = delays.Sum(d => Math.Pow(d - mean, 2));
-            info.JitterMs = Math.Sqrt(sumSquaredDiff / delays.Count);
-
-            // 计算 Min/Max
-            info.MinDelayMs = delays.Min();
-            info.MaxDelayMs = delays.Max();
-        }
-        else if (delays.Count == 1)
-        {
-            info.MinDelayMs = delays[0];
-            info.MaxDelayMs = delays[0];
-        }
-
-        return info;
-    }
-
-    /// <summary>
-    /// 单 IP ICMP Ping，串行 pingTimes 次，返回所有延迟值用于计算 Jitter
-    /// </summary>
-    public static async Task<(int received, List<double> delays)> IcmpPingAsync(
+    public static async Task<(int received, double totalDelayMs)> IcmpPingAsync(
         IPAddress ip,
         int timeoutMs,
         int pingTimes)
     {
-        var delays = new List<double>(pingTimes);
+        var received = 0;
+        var totalDelayMs = 0.0;
 
         using var ping = new Ping();
 
@@ -111,11 +83,12 @@ public static class IcmpPinger
             var rtt = await IcmpPingOnceAsync(ping, ip, timeoutMs);
             if (rtt.HasValue)
             {
-                delays.Add(rtt.Value);
+                received++;
+                totalDelayMs += rtt.Value;
             }
         }
 
-        return (delays.Count, delays);
+        return (received, totalDelayMs);
     }
 
     /// <summary>
