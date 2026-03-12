@@ -1,13 +1,16 @@
 # CloudflareST multi-platform build script
-# Usage: .\build.ps1 [platform] [-fd]
-# Example: .\build.ps1         # build all (self-contained)
-#          .\build.ps1 -fd    # build all (framework-dependent, ~几百 KB)
+# Usage: .\build.ps1 [platform] [-fd] [-clean]
+# Example: .\build.ps1              # build all (self-contained)
+#          .\build.ps1 -fd         # build all (framework-dependent)
+#          .\build.ps1 -clean      # clean obj/bin/publish only
+#          .\build.ps1 win-x64 -clean  # clean then build win-x64
 
 param(
     [Parameter(Position = 0)]
     [ValidateSet('all', 'win-x64', 'linux-x64', 'osx-x64', 'osx-arm64')]
     [string]$Platform = 'all',
-    [switch]$fd
+    [switch]$fd,
+    [switch]$clean
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,12 +49,9 @@ function Publish-Rid {
     }
     $ExePath = Join-Path $OutDir $Exe
     if (Test-Path $ExePath) {
-        # 本地打包输出文件名与 GitHub Actions Release 保持一致，且不再放在子文件夹中
-        # 如：cfst-win-x64.exe / cfst-linux-x64 / cfst-osx-x64 / cfst-osx-arm64
         $finalName = if ($Rid -eq 'win-x64') { "cfst-$Rid$suffix.exe" } else { "cfst-$Rid$suffix" }
         $FinalPath = Join-Path $PublishBase $finalName
         Copy-Item $ExePath $FinalPath -Force
-
         $Size = (Get-Item $FinalPath).Length / 1MB
         Write-Host "    Output: $FinalPath ($([math]::Round($Size, 2)) MB)" -ForegroundColor Green
     }
@@ -59,19 +59,33 @@ function Publish-Rid {
 
 Push-Location $ProjectRoot
 try {
-    $mode = "self-contained"
-    if ($fd) { $mode = "fd" }
-    Write-Host "CloudflareST build - Project: $ProjectRoot [$mode]" -ForegroundColor Yellow
-    if ($Platform -eq 'all') {
-        foreach ($key in @('win-x64', 'linux-x64', 'osx-x64', 'osx-arm64')) {
-            $t = $Targets[$key]
+    $skipBuild = $false
+    if ($clean) {
+        Write-Host "Cleaning obj/bin/publish..." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force (Join-Path $ProjectRoot 'obj') -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force (Join-Path $ProjectRoot 'bin') -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $PublishBase -ErrorAction SilentlyContinue
+        Write-Host "Clean done." -ForegroundColor Green
+        if (-not $PSBoundParameters.ContainsKey('Platform')) {
+            $skipBuild = $true
+        }
+    }
+
+    if (-not $skipBuild) {
+        $mode = "self-contained"
+        if ($fd) { $mode = "fd" }
+        Write-Host "CloudflareST build - Project: $ProjectRoot [$mode]" -ForegroundColor Yellow
+        if ($Platform -eq 'all') {
+            foreach ($key in @('win-x64', 'linux-x64', 'osx-x64', 'osx-arm64')) {
+                $t = $Targets[$key]
+                Publish-Rid -Rid $t.Rid -Desc $t.Desc -Exe $t.Exe -FrameworkDependent $fd.IsPresent
+            }
+        } else {
+            $t = $Targets[$Platform]
             Publish-Rid -Rid $t.Rid -Desc $t.Desc -Exe $t.Exe -FrameworkDependent $fd.IsPresent
         }
-    } else {
-        $t = $Targets[$Platform]
-        Publish-Rid -Rid $t.Rid -Desc $t.Desc -Exe $t.Exe -FrameworkDependent $fd.IsPresent
+        Write-Host "`nDone. Output: $PublishBase" -ForegroundColor Green
     }
-    Write-Host "`nDone. Output: $PublishBase" -ForegroundColor Green
 } finally {
     Pop-Location
 }

@@ -10,6 +10,16 @@
     <Version>1.0.0</Version>
   </PropertyGroup>
 
+  <!-- 防止子目录残留的 obj 下自动生成文件被主项目误编译 -->
+  <ItemGroup>
+    <Compile Remove="CloudflareST.Core\**" />
+    <Compile Remove="CloudflareST.Cli\**" />
+    <EmbeddedResource Remove="CloudflareST.Core\**" />
+    <EmbeddedResource Remove="CloudflareST.Cli\**" />
+    <None Remove="CloudflareST.Core\**" />
+    <None Remove="CloudflareST.Cli\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Cronos" Version="0.8.4" />
   </ItemGroup>

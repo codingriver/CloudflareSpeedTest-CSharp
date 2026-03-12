@@ -40,14 +40,18 @@ public static class HttpingTester
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, totalDelayMs, colo) = await HttpingAsync(ip, config);
+                    var (received, totalDelayMs, colo, samples) = await HttpingAsync(ip, config);
+                    var (jitter, minDelay, maxDelay) = IPInfo.CalcJitter(samples);
                     var info = new IPInfo
                     {
                         IP = ip,
                         Sended = config.PingCount,
                         Received = received,
                         DelayMs = received > 0 ? totalDelayMs / received : 0,
-                        Colo = colo ?? ""
+                        Colo = colo ?? "",
+                        JitterMs = jitter,
+                        MinDelayMs = minDelay,
+                        MaxDelayMs = maxDelay,
                     };
                     if (received > 0 &&
                         info.DelayMs <= config.DelayThresholdMs &&
@@ -73,7 +77,7 @@ public static class HttpingTester
     /// <summary>
     /// 单 IP HTTPing：预检 + 循环测延迟
     /// </summary>
-    public static async Task<(int received, double totalDelayMs, string? colo)> HttpingAsync(IPAddress ip, Config config)
+    public static async Task<(int received, double totalDelayMs, string? colo, List<double> samples)> HttpingAsync(IPAddress ip, Config config)
     {
         var allowedColos = ColoProvider.ParseCfColo(config.CfColo);
 
@@ -94,15 +98,16 @@ public static class HttpingTester
             if (config.Debug)
                 Console.WriteLine($"[调试] IP: {ip}, StatusCode: {(int)preResp.StatusCode}, URL: {config.SpeedUrl}");
             if (!IsValidStatusCode((int)preResp.StatusCode, config))
-                return (0, 0, null);
+                return (0, 0, null, new List<double>());
 
             var colo = ColoProvider.GetColoFromHeaders(preResp.Headers);
             if (!ColoProvider.IsColoAllowed(colo, allowedColos))
-                return (0, 0, null);
+                return (0, 0, null, new List<double>());
 
             // 循环测延迟
             var received = 0;
             var totalMs = 0.0;
+            var samples = new List<double>(config.PingCount);
             for (var i = 0; i < config.PingCount; i++)
             {
                 using var req = new HttpRequestMessage(HttpMethod.Head, config.SpeedUrl);
@@ -118,19 +123,21 @@ public static class HttpingTester
                     if (code == 200 || code == 301 || code == 302)
                     {
                         received++;
-                        totalMs += sw.Elapsed.TotalMilliseconds;
+                        var elapsed = sw.Elapsed.TotalMilliseconds;
+                        totalMs += elapsed;
+                        samples.Add(elapsed);
                     }
                 }
                 catch { }
             }
 
-            return (received, totalMs, colo);
+            return (received, totalMs, colo, samples);
         }
         catch (Exception ex)
         {
             if (config.Debug)
                 Console.WriteLine($"[调试] IP: {ip}, 异常: {ex.Message}");
-            return (0, 0, null);
+            return (0, 0, null, new List<double>());
         }
     }
 

@@ -84,6 +84,9 @@ public static class SpeedTester
                     Sended = info.Sended,
                     Received = info.Received,
                     DelayMs = info.DelayMs,
+                    JitterMs = info.JitterMs,
+                    MinDelayMs = info.MinDelayMs,
+                    MaxDelayMs = info.MaxDelayMs,
                     Colo = info.Colo,
                     DownloadSpeedMbps = 0
                 };
@@ -98,6 +101,9 @@ public static class SpeedTester
                 Sended = info.Sended,
                 Received = info.Received,
                 DelayMs = info.DelayMs,
+                JitterMs = info.JitterMs,
+                MinDelayMs = info.MinDelayMs,
+                MaxDelayMs = info.MaxDelayMs,
                 Colo = string.IsNullOrEmpty(s.Colo) ? info.Colo : s.Colo,
                 DownloadSpeedMbps = s.SpeedMbps
             };

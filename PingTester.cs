@@ -36,13 +36,17 @@ public static class PingTester
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, totalDelayMs) = await TcpPingAsync(ip, config.Port, config.TimeoutMs, config.PingCount);
+                    var (received, totalDelayMs, samples) = await TcpPingAsync(ip, config.Port, config.TimeoutMs, config.PingCount);
+                    var (jitter, minDelay, maxDelay) = IPInfo.CalcJitter(samples);
                     var info = new IPInfo
                     {
                         IP = ip,
                         Sended = config.PingCount,
                         Received = received,
-                        DelayMs = received > 0 ? totalDelayMs / received : 0
+                        DelayMs = received > 0 ? totalDelayMs / received : 0,
+                        JitterMs = jitter,
+                        MinDelayMs = minDelay,
+                        MaxDelayMs = maxDelay,
                     };
                     if (received > 0 &&
                         info.DelayMs <= config.DelayThresholdMs &&
@@ -68,7 +72,7 @@ public static class PingTester
     /// <summary>
     /// 单 IP TCPing，串行 pingTimes 次
     /// </summary>
-    public static async Task<(int received, double totalDelayMs)> TcpPingAsync(
+    public static async Task<(int received, double totalDelayMs, List<double> samples)> TcpPingAsync(
         IPAddress ip,
         int port,
         int timeoutMs,
@@ -76,6 +80,7 @@ public static class PingTester
     {
         var received = 0;
         var totalDelayMs = 0.0;
+        var samples = new List<double>(pingTimes);
 
         for (var i = 0; i < pingTimes; i++)
         {
@@ -84,10 +89,11 @@ public static class PingTester
             {
                 received++;
                 totalDelayMs += rtt.Value;
+                samples.Add(rtt.Value);
             }
         }
 
-        return (received, totalDelayMs);
+        return (received, totalDelayMs, samples);
     }
 
     /// <summary>

@@ -36,13 +36,17 @@ public static class IcmpPinger
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, totalDelayMs) = await IcmpPingAsync(ip, config.TimeoutMs, config.PingCount);
+                    var (received, totalDelayMs, samples) = await IcmpPingAsync(ip, config.TimeoutMs, config.PingCount);
+                    var (jitter, minDelay, maxDelay) = IPInfo.CalcJitter(samples);
                     var info = new IPInfo
                     {
                         IP = ip,
                         Sended = config.PingCount,
                         Received = received,
-                        DelayMs = received > 0 ? totalDelayMs / received : 0
+                        DelayMs = received > 0 ? totalDelayMs / received : 0,
+                        JitterMs = jitter,
+                        MinDelayMs = minDelay,
+                        MaxDelayMs = maxDelay,
                     };
                     if (received > 0 &&
                         info.DelayMs <= config.DelayThresholdMs &&
@@ -68,13 +72,14 @@ public static class IcmpPinger
     /// <summary>
     /// 单 IP ICMP Ping，串行 pingTimes 次，取平均延迟
     /// </summary>
-    public static async Task<(int received, double totalDelayMs)> IcmpPingAsync(
+    public static async Task<(int received, double totalDelayMs, List<double> samples)> IcmpPingAsync(
         IPAddress ip,
         int timeoutMs,
         int pingTimes)
     {
         var received = 0;
         var totalDelayMs = 0.0;
+        var samples = new List<double>(pingTimes);
 
         using var ping = new Ping();
 
@@ -85,10 +90,11 @@ public static class IcmpPinger
             {
                 received++;
                 totalDelayMs += rtt.Value;
+                samples.Add(rtt.Value);
             }
         }
 
-        return (received, totalDelayMs);
+        return (received, totalDelayMs, samples);
     }
 
     /// <summary>
