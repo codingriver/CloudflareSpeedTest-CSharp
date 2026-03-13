@@ -14,23 +14,48 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # NativeAOT + UPX（需在对应系统构建，不可交叉编译）
+          # ---------- NativeAOT + UPX（最小体积，~5 MB）----------
           - rid: win-x64
             exe: cfst.exe
             os: windows-latest
-            mode: aot
+            upx: true
+            suffix: ""
           - rid: linux-x64
             exe: cfst
             os: ubuntu-latest
-            mode: aot
+            upx: true
+            suffix: ""
           - rid: osx-x64
             exe: cfst
             os: macos-13
-            mode: aot
+            upx: true
+            suffix: ""
           - rid: osx-arm64
             exe: cfst
             os: macos-14
-            mode: aot
+            upx: true
+            suffix: ""
+          # ---------- NativeAOT 无 UPX（~10 MB，杀软友好）----------
+          - rid: win-x64
+            exe: cfst.exe
+            os: windows-latest
+            upx: false
+            suffix: "-noupx"
+          - rid: linux-x64
+            exe: cfst
+            os: ubuntu-latest
+            upx: false
+            suffix: "-noupx"
+          - rid: osx-x64
+            exe: cfst
+            os: macos-13
+            upx: false
+            suffix: "-noupx"
+          - rid: osx-arm64
+            exe: cfst
+            os: macos-14
+            upx: false
+            suffix: "-noupx"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -46,45 +71,46 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get install -y clang zlib1g-dev
 
-      # UPX 安装
+      # UPX 安装（仅 upx=true 时安装）
       - name: Install UPX (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.upx == true && runner.os == 'Windows'
         run: choco install upx -y
         shell: pwsh
 
       - name: Install UPX (macOS)
-        if: runner.os == 'macOS'
+        if: matrix.upx == true && runner.os == 'macOS'
         run: brew install upx
 
       # Linux upx 已预装，无需安装
 
       # 构建 NativeAOT
-      - name: Publish ${{ matrix.rid }} [AOT]
+      - name: Publish ${{ matrix.rid }}${{ matrix.suffix }} [AOT$(matrix.upx == true && '+UPX' || '')]
         shell: bash
         run: |
           dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -c Release \
             -p:PublishAot=true \
             -p:StripSymbols=true \
-            -o publish/${{ matrix.rid }}
+            -o publish/${{ matrix.rid }}${{ matrix.suffix }}
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
-      # UPX 压缩
-      - name: UPX compress ${{ matrix.rid }}
+      # UPX 压缩（仅 upx=true）
+      - name: UPX compress ${{ matrix.rid }}${{ matrix.suffix }}
+        if: matrix.upx == true
         shell: bash
         run: |
-          exe_path="publish/${{ matrix.rid }}/${{ matrix.exe }}"
+          exe_path="publish/${{ matrix.rid }}${{ matrix.suffix }}/${{ matrix.exe }}"
           if command -v upx &>/dev/null; then
             upx --best --lzma "$exe_path" && echo "UPX done" || echo "UPX skipped (unsupported binary)"
           else
             echo "UPX not found, skipping"
           fi
 
-      - name: Upload artifact (cfst-${{ matrix.rid }})
+      - name: Upload artifact (cfst-${{ matrix.rid }}${{ matrix.suffix }})
         uses: actions/upload-artifact@v4
         with:
-          name: cfst-${{ matrix.rid }}
-          path: publish/${{ matrix.rid }}/${{ matrix.exe }}
+          name: cfst-${{ matrix.rid }}${{ matrix.suffix }}
+          path: publish/${{ matrix.rid }}${{ matrix.suffix }}/${{ matrix.exe }}
 
   # 推送 tag 时创建 GitHub Release
   release:
@@ -102,11 +128,18 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          cp artifacts/cfst-win-x64/cfst.exe   release/cfst-win-x64.exe
-          cp artifacts/cfst-linux-x64/cfst      release/cfst-linux-x64
-          cp artifacts/cfst-osx-x64/cfst        release/cfst-osx-x64
-          cp artifacts/cfst-osx-arm64/cfst      release/cfst-osx-arm64
+          # AOT + UPX
+          cp artifacts/cfst-win-x64/cfst.exe          release/cfst-win-x64.exe
+          cp artifacts/cfst-linux-x64/cfst             release/cfst-linux-x64
+          cp artifacts/cfst-osx-x64/cfst               release/cfst-osx-x64
+          cp artifacts/cfst-osx-arm64/cfst             release/cfst-osx-arm64
+          # AOT 无 UPX
+          cp artifacts/cfst-win-x64-noupx/cfst.exe    release/cfst-win-x64-noupx.exe
+          cp artifacts/cfst-linux-x64-noupx/cfst       release/cfst-linux-x64-noupx
+          cp artifacts/cfst-osx-x64-noupx/cfst         release/cfst-osx-x64-noupx
+          cp artifacts/cfst-osx-arm64-noupx/cfst       release/cfst-osx-arm64-noupx
           chmod +x release/cfst-linux-x64 release/cfst-osx-x64 release/cfst-osx-arm64
+          chmod +x release/cfst-linux-x64-noupx release/cfst-osx-x64-noupx release/cfst-osx-arm64-noupx
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -116,6 +149,10 @@ jobs:
             release/cfst-linux-x64
             release/cfst-osx-x64
             release/cfst-osx-arm64
+            release/cfst-win-x64-noupx.exe
+            release/cfst-linux-x64-noupx
+            release/cfst-osx-x64-noupx
+            release/cfst-osx-arm64-noupx
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
