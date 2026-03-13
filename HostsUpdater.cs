@@ -3,92 +3,55 @@ using System.Runtime.InteropServices;
 
 namespace CloudflareST;
 
-/// <summary>
-/// Hosts 文件更新：支持 a.com, *.b.com 格式，有则更新、无则添加
-/// </summary>
 public static class HostsUpdater
 {
     public static string GetHostsPath(Config config)
     {
         if (!string.IsNullOrWhiteSpace(config.HostsFilePath))
             return config.HostsFilePath;
-
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "drivers", "etc", "hosts");
         return "/etc/hosts";
     }
 
-    /// <summary>
-    /// 更新 hosts，返回是否成功
-    /// </summary>
     public static bool Update(Config config, IReadOnlyList<IPInfo> results, Action<string>? log = null)
     {
-        if (results.Count == 0)
-        {
-            log?.Invoke("无测速结果，跳过 hosts 更新。");
-            return false;
-        }
-
-        var idx = Math.Clamp(config.HostsIpIndex - 1, 0, results.Count - 1);
-        var ip = results[idx].IP.ToString();
-        var patterns = ParseHostsPatterns(config.HostsDomains!);
-        if (patterns.Count == 0)
-        {
-            log?.Invoke("未解析到有效域名。");
-            return false;
-        }
-
+        if (results.Count == 0) { log?.Invoke("no results"); return false; }
+        if (config.HostEntries.Count == 0) { log?.Invoke("no -host entries"); return false; }
         var path = GetHostsPath(config);
-        if (!File.Exists(path))
-        {
-            log?.Invoke($"hosts 文件不存在: {path}");
-            return false;
-        }
-
+        if (!File.Exists(path)) { log?.Invoke($"hosts not found: {path}"); return false; }
         var content = File.ReadAllText(path);
         var lines = ParseHostsLines(content);
-        var updatedLines = ApplyUpdates(lines, patterns, ip, out var addedDomains);
-
-        var newContent = string.Join(Environment.NewLine, updatedLines);
-        if (!newContent.EndsWith(Environment.NewLine) && updatedLines.Count > 0)
-            newContent += Environment.NewLine;
-
-        if (config.HostsDryRun)
+        var allAdded = new List<string>();
+        foreach (var entry in config.HostEntries)
         {
-            log?.Invoke("[dry-run] 将要写入的内容：");
-            log?.Invoke(newContent);
-            return true;
+            var idx = Math.Clamp(entry.ResolvedIndex, 0, results.Count - 1);
+            var ip = results[idx].IP.ToString();
+            var patterns = ParseHostsPatterns(entry.Domain);
+            if (patterns.Count == 0) continue;
+            ApplyUpdatesInPlace(lines, patterns, ip, out var added);
+            allAdded.AddRange(added);
         }
-
+        var newContent = string.Join(Environment.NewLine, lines.Select(l => l.IsComment ? l.Raw : $"{l.IP}  {string.Join("  ", l.Domains!)}"));
+        if (!newContent.EndsWith(Environment.NewLine) && lines.Count > 0) newContent += Environment.NewLine;
+        if (config.HostsDryRun) { log?.Invoke("[dry-run]"); log?.Invoke(newContent); return true; }
         try
         {
             File.WriteAllText(path, newContent);
-            log?.Invoke($"hosts 已更新: {path}");
-            if (addedDomains.Count > 0)
-                log?.Invoke($"新增: {string.Join(", ", addedDomains)}");
+            log?.Invoke($"hosts updated: {path}");
+            if (allAdded.Count > 0) log?.Invoke($"added: {string.Join(", ", allAdded)}");
             return true;
         }
         catch (UnauthorizedAccessException)
         {
-            // 即使在 -silent/-q 模式下也要输出权限错误提示
-            var msg = "无权限写入 hosts，请以管理员/root 权限运行。本次待写入内容已输出到 hosts-pending.txt";
-            if (log is not null)
-                log(msg);
-            else
-                Console.WriteLine(msg);
+            var msg = "no permission to write hosts. content saved to hosts-pending.txt";
+            if (log != null) log(msg); else Console.WriteLine(msg);
             File.WriteAllText("hosts-pending.txt", newContent);
             return false;
         }
-        catch (Exception ex)
-        {
-            log?.Invoke($"写入 hosts 失败: {ex.Message}");
-            return false;
-        }
+        catch (Exception ex) { log?.Invoke($"write hosts failed: {ex.Message}"); return false; }
     }
 
-    /// <summary>
-    /// 解析 "a.com,*.b.com" 为 (pattern, isWildcard) 列表
-    /// </summary>
     private static List<(string Pattern, bool IsWildcard)> ParseHostsPatterns(string domains)
     {
         var list = new List<(string, bool)>();
@@ -96,132 +59,60 @@ public static class HostsUpdater
         {
             var t = s.Trim();
             if (string.IsNullOrEmpty(t)) continue;
-            var isWildcard = t.StartsWith("*.");
-            list.Add((t, isWildcard));
+            list.Add((t, t.StartsWith("*.")));
         }
         return list;
     }
 
-    /// <summary>
-    /// 域名是否匹配 pattern（支持 *.b.com）
-    /// </summary>
     private static bool DomainMatches(string domain, string pattern, bool isWildcard)
     {
         if (string.IsNullOrEmpty(domain)) return false;
         domain = domain.Trim().ToLowerInvariant();
-
-        if (!isWildcard)
-            return string.Equals(domain, pattern.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase);
-
-        // *.b.com 匹配 www.b.com, api.b.com, b.com（根域名也匹配）
-        var suffix = pattern.AsSpan(2).Trim().ToString().ToLowerInvariant(); // 去掉 *.
+        if (!isWildcard) return string.Equals(domain, pattern.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase);
+        var suffix = pattern.AsSpan(2).Trim().ToString().ToLowerInvariant();
         return domain == suffix || domain.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// pattern 在“新增”时对应的域名，*.b.com -> b.com
-    /// </summary>
     private static string PatternToAddDomain(string pattern, bool isWildcard)
     {
         if (!isWildcard) return pattern.Trim();
-        return pattern.AsSpan(2).Trim().ToString(); // *.b.com -> b.com
+        return pattern.AsSpan(2).Trim().ToString();
     }
 
-    /// <summary>
-    /// 解析 hosts 为 (IP, domains[]) 行列表，保留注释和空行
-    /// </summary>
     private static List<HostsLine> ParseHostsLines(string content)
     {
         var lines = new List<HostsLine>();
         foreach (var line in content.Split('\n'))
         {
             var trimmed = line.TrimEnd();
-            if (string.IsNullOrWhiteSpace(trimmed))
-            {
-                lines.Add(new HostsLine { Raw = line, IsComment = true });
-                continue;
-            }
-            if (trimmed.StartsWith('#'))
-            {
-                lines.Add(new HostsLine { Raw = line, IsComment = true });
-                continue;
-            }
-
-            var parts = trimmed.Split((char[]?)[' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2)
-            {
-                lines.Add(new HostsLine { Raw = line, IsComment = true });
-                continue;
-            }
-
-            if (!IPAddress.TryParse(parts[0], out _))
-            {
-                lines.Add(new HostsLine { Raw = line, IsComment = true });
-                continue;
-            }
-
-            lines.Add(new HostsLine
-            {
-                Raw = line,
-                IP = parts[0],
-                Domains = parts.Skip(1).ToList(),
-                IsComment = false
-            });
+            if (string.IsNullOrWhiteSpace(trimmed)) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
+            if (trimmed.StartsWith('#')) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
+            var parts = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
+            if (!IPAddress.TryParse(parts[0], out _)) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
+            lines.Add(new HostsLine { Raw = line, IP = parts[0], Domains = parts.Skip(1).ToList(), IsComment = false });
         }
         return lines;
     }
 
-    private static List<string> ApplyUpdates(
-        List<HostsLine> lines,
-        List<(string Pattern, bool IsWildcard)> patterns,
-        string newIp,
-        out List<string> addedDomains)
+    private static void ApplyUpdatesInPlace(List<HostsLine> lines, List<(string Pattern, bool IsWildcard)> patterns, string newIp, out List<string> addedDomains)
     {
-        addedDomains = [];
+        addedDomains = new List<string>();
         var patternMatched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        // 第一遍：更新已存在的行
         foreach (var line in lines)
         {
             if (line.IsComment) continue;
-
             foreach (var domain in line.Domains!)
-            {
                 foreach (var (pattern, isWildcard) in patterns)
-                {
-                    if (DomainMatches(domain, pattern, isWildcard))
-                    {
-                        patternMatched.Add(pattern);
-                        line.IP = newIp;
-                        break;
-                    }
-                }
-            }
+                    if (DomainMatches(domain, pattern, isWildcard)) { patternMatched.Add(pattern); line.IP = newIp; break; }
         }
-
-        // 第二遍：收集需要新增的域名（去重）
         var toAdd = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (pattern, isWildcard) in patterns)
-        {
-            if (patternMatched.Contains(pattern)) continue;
-            toAdd.Add(PatternToAddDomain(pattern, isWildcard));
-        }
+            if (!patternMatched.Contains(pattern))
+                toAdd.Add(PatternToAddDomain(pattern, isWildcard));
         addedDomains = toAdd.ToList();
-
-        // 生成输出
-        var result = new List<string>();
-        foreach (var line in lines)
-        {
-            if (line.IsComment)
-                result.Add(line.Raw);
-            else
-                result.Add($"{line.IP}  {string.Join("  ", line.Domains!)}");
-        }
-
         if (addedDomains.Count > 0)
-            result.Add($"{newIp}  {string.Join("  ", addedDomains)}");
-
-        return result;
+            lines.Add(new HostsLine { IP = newIp, Domains = addedDomains, IsComment = false, Raw = $"{newIp}  {string.Join("  ", addedDomains)}" });
     }
 
     private class HostsLine

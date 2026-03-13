@@ -10,8 +10,7 @@ static Config ParseArgs(string[] args)
 
     return new Config
     {
-        IpFile = Get("-f", "ip.txt"),
-        IpFileV6 = Get("-f6", "ipv6.txt"),
+        IpFiles = ParseIpFiles(args),
         IpRanges = GetArg(args, "-ip"),
         MaxIpCount = GetInt("-ipn", 0),
         PingThreads = GetInt("-n", 200),
@@ -41,11 +40,48 @@ static Config ParseArgs(string[] args)
         CronExpression = GetArg(args, "-cron"),
         TimeZoneId = GetArg(args, "-tz"),
         // Hosts
-        HostsDomains = GetArg(args, "-hosts"),
-        HostsIpIndex = GetInt("-hosts-ip", 1),
+        HostEntries = ParseHostEntries(args),
         HostsFilePath = GetArg(args, "-hosts-file"),
         HostsDryRun = GetBool("-hosts-dry-run")
     };
+}
+
+static List<string> ParseIpFiles(string[] args)
+{
+    var files = new List<string>();
+    for (var i = 0; i < args.Length - 1; i++)
+        if (args[i].Equals("-f", StringComparison.OrdinalIgnoreCase))
+            files.Add(args[i + 1]);
+    // 不传 -f 时默认同时加载 ip.txt 和 ipv6.txt
+    if (files.Count == 0)
+        files = ["ip.txt", "ipv6.txt"];
+    return files;
+}
+
+static List<HostEntry> ParseHostEntries(string[] args)
+{
+    var list = new List<HostEntry>();
+    for (var i = 0; i < args.Length; i++)
+    {
+        if (!args[i].Equals("-host", StringComparison.OrdinalIgnoreCase))
+            continue;
+        if (i + 1 >= args.Length)
+            break;
+        var domain = args[i + 1];
+        var ipIndex = 1; // 默认第1名
+        // 如果下一个 token 是数字，视为 IpIndex
+        if (i + 2 < args.Length && int.TryParse(args[i + 2], out var n))
+        {
+            ipIndex = n <= 0 ? 1 : n;
+            i += 2;
+        }
+        else
+        {
+            i += 1;
+        }
+        list.Add(new HostEntry { Domain = domain, IpIndex = ipIndex });
+    }
+    return list;
 }
 
 static string? GetArg(string[] args, string key)
@@ -189,7 +225,7 @@ try
         }
 
         // Hosts 更新（dry-run 时始终输出）
-        if (!string.IsNullOrWhiteSpace(config.HostsDomains) && finalResults.Count > 0)
+        if (config.HostEntries.Count > 0 && finalResults.Count > 0)
         {
             var log = (config.HostsDryRun || !config.Silent) ? (Action<string>)Console.WriteLine : null;
             HostsUpdater.Update(config, finalResults, log);

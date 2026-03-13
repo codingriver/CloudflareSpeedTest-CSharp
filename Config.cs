@@ -14,8 +14,8 @@ public class Config
     public double LossRateThreshold { get; set; } = 1.0;
     public double SpeedMinMbps { get; set; } = 0;
     public int Port { get; set; } = 443;
-    public string IpFile { get; set; } = "ip.txt";
-    public string IpFileV6 { get; set; } = "ipv6.txt";
+    // 不传 -f 时默认同时加载 ip.txt 和 ipv6.txt；传 -f 时只加载指定文件（可多次）
+    public List<string> IpFiles { get; set; } = ["ip.txt", "ipv6.txt"];
     public string? IpRanges { get; set; }
     public int MaxIpCount { get; set; } = 0;  // 0=不限制，>0 时随机抽取指定数量
     public string OutputFile { get; set; } = "result.csv";
@@ -42,8 +42,18 @@ public class Config
     public string? TimeZoneId { get; set; }        // 时区，默认本地
 
     // Hosts 更新
-    public string? HostsDomains { get; set; }     // 要更新/添加的域名，如 "a.com,*.b.com"
-    public int HostsIpIndex { get; set; } = 1;     // 使用测速结果第 N 名 IP（1-based）
-    public string? HostsFilePath { get; set; }     // 自定义 hosts 路径
-    public bool HostsDryRun { get; set; } = false; // 仅输出不写入
+    public List<HostEntry> HostEntries { get; set; } = [];  // -host 参数列表
+    public string? HostsFilePath { get; set; }                // 自定义 hosts 路径
+    public bool HostsDryRun { get; set; } = false;            // 仅输出不写入
+}
+
+/// <summary>
+/// 单条 hosts 更新项：域名 + 使用第几名 IP（1-based，0=默认第1名）
+/// </summary>
+public class HostEntry
+{
+    public string Domain { get; set; } = "";
+    public int IpIndex { get; set; } = 1;  // 1-based，0 或不填均视为 1
+
+    public int ResolvedIndex => IpIndex <= 0 ? 0 : IpIndex - 1;  // 转为 0-based 数组索引
 }

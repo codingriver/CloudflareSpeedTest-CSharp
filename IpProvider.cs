@@ -44,9 +44,13 @@ public static class IpProvider
 
         if (ranges.Count == 0)
         {
-            await EnsureAndLoadFileAsync(config.IpFile, IpUrls, ranges, config.Silent, ct);
-            var ipv6Path = Path.Combine(Path.GetDirectoryName(config.IpFile) ?? ".", config.IpFileV6);
-            await EnsureAndLoadFileAsync(ipv6Path, Ipv6Urls, ranges, config.Silent, ct);
+            // 遍历 IpFiles 列表，每个文件独立加载；根据文件名推断下载 URL
+            foreach (var filePath in config.IpFiles)
+            {
+                var fileName = Path.GetFileName(filePath).ToLowerInvariant();
+                var urls = fileName.Contains("v6") || fileName.Contains("ipv6") ? Ipv6Urls : IpUrls;
+                await EnsureAndLoadFileAsync(filePath, urls, ranges, config.Silent, ct);
+            }
         }
 
         if (ranges.Count == 0)
