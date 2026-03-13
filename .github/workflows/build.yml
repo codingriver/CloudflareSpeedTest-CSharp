@@ -3,7 +3,7 @@ name: Build & Package
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
     branches: [main, master]
   workflow_dispatch:
@@ -19,22 +19,22 @@ jobs:
             exe: cfst.exe
             os: windows-latest
             self_contained: true
-            suffix: ''
+            suffix: ""
           - rid: linux-x64
             exe: cfst
             os: ubuntu-latest
             self_contained: true
-            suffix: ''
+            suffix: ""
           - rid: osx-x64
             exe: cfst
-            os: macos-latest
+            os: macos-13
             self_contained: true
-            suffix: ''
+            suffix: ""
           - rid: osx-arm64
             exe: cfst
             os: macos-14
             self_contained: true
-            suffix: ''
+            suffix: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
 
       - name: Publish ${{ matrix.rid }}${{ matrix.suffix }}
         shell: bash
