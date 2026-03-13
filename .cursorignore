@@ -1,0 +1,33 @@
+﻿# Build results
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+
+# NuGet
+packages/
+artifacts/
+
+# Rider
+.idea/
+
+# User data
+ip.txt
+ipv6.txt
+result.csv
+onlyip.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.tmp
+*.temp
