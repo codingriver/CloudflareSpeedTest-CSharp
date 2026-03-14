@@ -83,14 +83,14 @@ jobs:
 
       # Linux upx 已预装，无需安装
 
-      # 构建 NativeAOT
+      # 构建 NativeAOT（输出到临时目录避免与最终文件名冲突）
       - name: Publish ${{ matrix.out }} [AOT${{ matrix.upx == true && '+UPX' || '' }}]
         shell: bash
         run: |
           dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -c Release \
             -p:PublishAot=true \
             -p:StripSymbols=true \
-            -o publish/${{ matrix.out }}
+            -o publish/tmp/${{ matrix.out }}
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
@@ -99,18 +99,18 @@ jobs:
         if: matrix.upx == true
         shell: bash
         run: |
-          exe_path="publish/${{ matrix.out }}/${{ matrix.exe }}"
+          exe_path="publish/tmp/${{ matrix.out }}/${{ matrix.exe }}"
           if command -v upx &>/dev/null; then
             upx --best --lzma "$exe_path" && echo "UPX done" || echo "UPX skipped (unsupported binary)"
           else
             echo "UPX not found, skipping"
           fi
 
-      # 重命名为最终产物名
-      - name: Rename output to ${{ matrix.out }}
+      # 将最终产物移到 publish/ 根目录并以 out 命名
+      - name: Move output to publish/${{ matrix.out }}
         shell: bash
         run: |
-          mv "publish/${{ matrix.out }}/${{ matrix.exe }}" "publish/${{ matrix.out }}"
+          mv "publish/tmp/${{ matrix.out }}/${{ matrix.exe }}" "publish/${{ matrix.out }}"
 
       - name: Upload artifact (${{ matrix.out }})
         uses: actions/upload-artifact@v4
