@@ -106,11 +106,15 @@ jobs:
             echo "UPX not found, skipping"
           fi
 
-      # 将最终产物移到 publish/ 根目录并以 out 命名
-      - name: Move output to publish/${{ matrix.out }}
+      # 将最终产物复制到 publish/ 根目录并以 out 命名
+      - name: Copy output to publish/${{ matrix.out }}
         shell: bash
         run: |
-          mv "publish/tmp/${{ matrix.out }}/${{ matrix.exe }}" "publish/${{ matrix.out }}"
+          src="publish/tmp/${{ matrix.out }}/${{ matrix.exe }}"
+          dst="publish/${{ matrix.out }}"
+          echo "src=$src"
+          echo "dst=$dst"
+          cp "$src" "$dst"
 
       - name: Upload artifact (${{ matrix.out }})
         uses: actions/upload-artifact@v4
