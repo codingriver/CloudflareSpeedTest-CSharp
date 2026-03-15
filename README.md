@@ -6,20 +6,19 @@
 
 ### Windows
 
-在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载 `cfst-win-x64.exe`，双击或命令行运行：
+在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载 `cfst-windows-x64.exe`，双击或命令行运行：
 
 ```powershell
-.\cfst-win-x64.exe
+.\cfst-windows-x64.exe
 ```
 
-**测速方式**：默认用 ICMP Ping。如果测不出结果或结果异常，可能是网络禁用了 ICMP，可改用 `-tcping` 或 `-httping`。
+**测速方式**：默认用 ICMP Ping，程序会自动检测 ICMP 权限，不可用时自动切换 TCPing。也可手动指定：
 
 ```powershell
-# 以下任选其一
-.\cfst-win-x64.exe                                    # ICMP Ping（默认）
-.\cfst-win-x64.exe -tcping                             # TCPing：走 TCP 443，无需 ICMP 权限
-.\cfst-win-x64.exe -httping                            # HTTPing（使用默认 URL）
-.\cfst-win-x64.exe -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+.\cfst-windows-x64.exe                # ICMP Ping（默认，不可用时自动切换 TCPing）
+.\cfst-windows-x64.exe -tcping        # 手动指定 TCPing：走 TCP 443
+.\cfst-windows-x64.exe -httping       # HTTPing
+.\cfst-windows-x64.exe -icmp          # 强制 ICMP，禁止自动切换
 ```
 
 ### Linux
@@ -31,38 +30,36 @@ chmod +x cfst-linux-x64
 ./cfst-linux-x64
 ```
 
-**测速方式**：默认 ICMP Ping。测不出结果时改用 `-tcping` 或 `-httping`。
+**测速方式**：容器/非 root 环境通常无 ICMP 权限，程序会自动检测并切换 TCPing。
 
 ```bash
-./cfst-linux-x64                                      # ICMP Ping（默认）
-./cfst-linux-x64 -tcping                               # TCPing：走 TCP 443，无需 ICMP 权限
-./cfst-linux-x64 -httping                              # HTTPing（使用默认 URL）
-./cfst-linux-x64 -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+./cfst-linux-x64          # ICMP Ping（默认，无权限时自动切换 TCPing）
+./cfst-linux-x64 -tcping  # 手动指定 TCPing
+./cfst-linux-x64 -httping # HTTPing
+./cfst-linux-x64 -icmp    # 强制 ICMP，禁止自动切换
 ```
 
 ### macOS
 
-在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载：Intel 用 `cfst-osx-x64`，Apple Silicon 用 `cfst-osx-arm64`。
+在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载：Intel 用 `cfst-macos-x64`，Apple Silicon 用 `cfst-macos-arm64`。
 
 ```bash
-chmod +x cfst-osx-x64    # 或 cfst-osx-arm64
-./cfst-osx-x64           # 或 ./cfst-osx-arm64
+chmod +x cfst-macos-x64    # 或 cfst-macos-arm64
+./cfst-macos-x64           # 或 ./cfst-macos-arm64
 ```
 
-**测速方式**：默认 ICMP Ping。测不出结果时改用 `-tcping` 或 `-httping`。
+**测速方式**：默认 ICMP Ping，不可用时自动切换 TCPing。
 
 ```bash
 # Intel
-./cfst-osx-x64                                        # ICMP Ping（默认）
-./cfst-osx-x64 -tcping                                 # TCPing：走 TCP 443，无需 ICMP 权限
-./cfst-osx-x64 -httping                                # HTTPing（使用默认 URL）
-./cfst-osx-x64 -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+./cfst-macos-x64          # ICMP Ping（默认，不可用时自动切换 TCPing）
+./cfst-macos-x64 -tcping  # 手动指定 TCPing
+./cfst-macos-x64 -httping # HTTPing
 
 # Apple Silicon
-./cfst-osx-arm64                                       # ICMP Ping（默认）
-./cfst-osx-arm64 -tcping                                # TCPing
-./cfst-osx-arm64 -httping                               # HTTPing（使用默认 URL）
-./cfst-osx-arm64 -httping -url "https://speed.cloudflare.com/__down?bytes=52428800"  # HTTPing（Cloudflare 官方测速）
+./cfst-macos-arm64          # ICMP Ping（默认）
+./cfst-macos-arm64 -tcping  # TCPing
+./cfst-macos-arm64 -httping # HTTPing
 ```
 
 首次运行会自动下载 Cloudflare IP 列表到 `ip.txt`，无需手动准备。
@@ -178,6 +175,7 @@ chmod +x cfst-osx-x64    # 或 cfst-osx-arm64
 ## 功能
 
 - **三种测速方式**：ICMP Ping（默认）、TCPing（无需 ICMP 权限）、HTTPing（可测地区码）
+- **ICMP 自动降级**：默认模式下自动检测 ICMP 权限，无权限或网络屏蔽时自动切换 TCPing；`-icmp` 可强制保持 ICMP
 - **下载测速**：测延迟后还会测下载速度，结果更直观
 - **地区码**：支持 Cloudflare、AWS、Fastly、CDN77、Bunny、Gcore
 - **IP 列表**：缺 `ip.txt` 时自动从 CloudflareIP-Sync 下载
@@ -213,6 +211,7 @@ dotnet build
 | `-tlr` | 1.0 | 丢包率上限 |
 | `-tcping` | false | 使用 TCPing（默认 ICMP） |
 | `-httping` | false | 使用 HTTPing |
+| `-icmp` | false | 强制使用 ICMP，禁止自动切换 TCPing |
 | `-httping-code` | 0 | 有效状态码，0=200/301/302 |
 | `-cfcolo` | - | 地区码过滤（仅 HTTPing） |
 | **下载测速** | | |
@@ -319,6 +318,12 @@ A: 加 `-dd` 参数。
 
 **Q: TCPing 和 ICMP 有啥区别？**  
 A: ICMP 需要系统允许 Ping；TCPing 走 TCP 443，不依赖 ICMP，网络受限时更稳。
+
+**Q: Linux 容器里测不出结果怎么办？**  
+A: 容器通常无 ICMP 权限，程序默认会自动检测并切换 TCPing。若仍无结果，可手动加 `-tcping` 参数。
+
+**Q: `-icmp` 和默认（不加参数）有什么区别？**  
+A: 默认模式会在 ICMP 不可用时自动切换 TCPing；`-icmp` 强制使用 ICMP，即使检测到无权限也不切换，适合需要明确测试 ICMP 可达性的场景。
 
 **Q: 测速 URL 用 HTTP 还是 HTTPS？**  
 A: 都行，端口要对应：HTTP 用 80，HTTPS 用 443，用 `-tp` 指定。
