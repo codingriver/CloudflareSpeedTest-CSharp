@@ -1,6 +1,6 @@
 # Cloudflare Speed Test - C# 版支持Hosts和定时任务
 
-从 Cloudflare CDN 的众多 IP 中，帮你测出**延迟低、速度快**的节点，方便自建优选或配置代理。基于 [XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest) 的 C# 实现。
+从 Cloudflare CDN 的众多 IP 中，帮你测出**延迟低、速度快**的节点，方便自建优选。基于 [XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest) 的 C# 实现。
 
 ## 快速开始
 
