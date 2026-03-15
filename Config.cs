@@ -19,6 +19,8 @@ public class Config
     public string? IpRanges { get; set; }
     public int MaxIpCount { get; set; } = 0;  // 0=不限制，>0 时随机抽取指定数量
     public string OutputFile { get; set; } = "result.csv";
+    public string OnlyIpFile { get; set; } = "onlyip.txt";
+    public string? OutputDir { get; set; }  // -outputdir 指定 csv 和 onlyip.txt 的输出目录
     public int OutputNum { get; set; } = 10;
     public bool TcpPingMode { get; set; } = false;  // -tcping 时使用 TCPing
     public bool HttpingMode { get; set; } = false;
@@ -34,7 +36,6 @@ public class Config
     public bool AllIp { get; set; } = false;
     public bool Debug { get; set; } = false;
     public bool Silent { get; set; } = false;  // -silent/-q 静默模式：仅输出 IP，出错或 0 结果时输出空并写 onlyip.txt
-    public string OnlyIpFile { get; set; } = "onlyip.txt";
 
     // 定时调度
     public int IntervalMinutes { get; set; } = 0;   // >0 时每 N 分钟执行一次

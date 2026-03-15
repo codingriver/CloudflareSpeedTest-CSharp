@@ -35,6 +35,7 @@ static Config ParseArgs(string[] args)
         Debug = GetBool("-debug"),
         Silent = GetBool("-silent") || GetBool("-q"),
         OnlyIpFile = Get("-onlyip", "onlyip.txt"),
+        OutputDir = GetArg(args, "-outputdir"),
         // 定时调度
         IntervalMinutes = GetInt("-interval", 0),
         AtTimes = GetArg(args, "-at"),
@@ -238,6 +239,15 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
 }
 
 var config = ParseArgs(args);
+
+// 若指定了 -outputdir，将 OutputFile 和 OnlyIpFile 重定向到该目录
+if (!string.IsNullOrEmpty(config.OutputDir))
+{
+    Directory.CreateDirectory(config.OutputDir);
+    config.OutputFile = Path.Combine(config.OutputDir, Path.GetFileName(config.OutputFile));
+    config.OnlyIpFile = Path.Combine(config.OutputDir, Path.GetFileName(config.OnlyIpFile));
+}
+
 var scheduleMode = Scheduler.GetMode(config);
 
 // 多参数冲突时提示

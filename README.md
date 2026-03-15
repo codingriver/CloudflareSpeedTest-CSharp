@@ -222,6 +222,7 @@ dotnet build
 | `-dd` | false | 禁用下载测速 |
 | **输出** | | |
 | `-o` | result.csv | 输出 CSV 文件 |
+| `-outputdir` | - | 指定输出目录，result.csv 和 onlyip.txt 均输出到该目录（不指定则保持当前逻辑） |
 | `-p` | 10 | 最终输出的 IP 数量上限（控制台、CSV、静默模式 onlyip.txt 均受此限制；传 0 或负数时按 10 处理） |
 | **其他** | | |
 | `-allip` | false | 全量 IP（默认每/24 随机一个） |

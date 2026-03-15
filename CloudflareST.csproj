@@ -14,8 +14,10 @@
   <ItemGroup>
     <Compile Remove="CloudflareST.Core\**" />
     <Compile Remove="CloudflareST.Cli\**" />
+    <Compile Remove="docs\**" />
     <EmbeddedResource Remove="CloudflareST.Core\**" />
     <EmbeddedResource Remove="CloudflareST.Cli\**" />
+    <EmbeddedResource Remove="docs\**" />
     <None Remove="CloudflareST.Core\**" />
     <None Remove="CloudflareST.Cli\**" />
   </ItemGroup>
