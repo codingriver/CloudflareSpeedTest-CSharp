@@ -13,7 +13,7 @@ public static class IpProvider
     private const string RawBase = $"https://raw.githubusercontent.com/{IpSourceRepo}/{IpSourceBranch}";
 
     /// <summary>
-    /// 多源回退：jsDelivr、GitHub Raw、国内代理，避免单点 SSL/网络故障
+    /// 多源回退：jsDelivr、GitHub Raw，避免单点 SSL/网络故障
     /// </summary>
     private static readonly string[] IpUrls =
     [
