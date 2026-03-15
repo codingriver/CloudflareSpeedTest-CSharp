@@ -47,6 +47,14 @@ public class Config
     public List<HostEntry> HostEntries { get; set; } = [];  // -host 参数列表
     public string? HostsFilePath { get; set; }                // 自定义 hosts 路径
     public bool HostsDryRun { get; set; } = false;            // 仅输出不写入
+
+    // 结构化进度输出
+    /// <summary>
+    /// 启用结构化进度行输出 (-progress)
+    /// 启用后每条进度消息以 "PROGRESS:{json}" 格式单独一行输出到 stdout。
+    /// 与 -silent 正交：-silent -progress 时仅输出 PROGRESS: 行和最终 IP 列表。
+    /// </summary>
+    public bool ShowProgress { get; set; } = false;
 }
 
 /// <summary>

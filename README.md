@@ -239,6 +239,8 @@ dotnet build
 | `-hosts-ip` | 1 | 使用测速结果第 N 名 IP |
 | `-hosts-file` | 系统默认 | 自定义 hosts 路径 |
 | `-hosts-dry-run` | false | 仅输出待写入内容，不实际写入 |
+| **进度输出** | | |
+| `-progress` | false | 启用结构化进度行；每条以 `PROGRESS:{json}` 输出到 stdout，供父进程/GUI 解析实时进度。消息类型：`init` `ping` `ping_done` `speed` `speed_done` `output` `done` `error` `schedule_wait` |
 
 ## 自行打包
 

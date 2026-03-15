@@ -44,7 +44,9 @@ static Config ParseArgs(string[] args)
         // Hosts
         HostEntries = ParseHostEntries(args),
         HostsFilePath = GetArg(args, "-hosts-file"),
-        HostsDryRun = GetBool("-hosts-dry-run")
+        HostsDryRun = GetBool("-hosts-dry-run"),
+        // 结构化进度输出
+        ShowProgress = GetBool("-progress")
     };
 }
 
@@ -100,14 +102,20 @@ static void WriteOnlyIp(Config cfg, IReadOnlyList<IPInfo> results)
     File.WriteAllText(cfg.OnlyIpFile, content);
 }
 
-static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, CancellationToken ct)
+static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, CancellationToken ct, long startTs)
 {
+    var totalStages = config.DisableSpeedTest ? 4 : 5;
+
     if (!config.Silent) Console.WriteLine("正在加载 IP 列表...");
     var ips = await IpProvider.LoadAsync(config, ct);
     if (!config.Silent) Console.WriteLine($"已加载 {ips.Count} 个 IP");
 
+    // 阶段 0: init
+    ProgressReporter.ReportInit(config, ips.Count, startTs);
+
     if (ips.Count == 0)
     {
+        ProgressReporter.ReportError(config, "NO_IPS", "没有可测速的 IP", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         if (config.Silent)
             File.WriteAllText(config.OnlyIpFile, "");
         else
@@ -115,11 +123,18 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
         return null;
     }
 
-    var pingProgress = config.Silent ? null : new SyncProgress<(int Completed, int Qualified)>(p =>
-    {
-        Console.Write($"\r已测: {p.Completed}/{ips.Count} 可用: {p.Qualified}    ");
-        Console.Out.Flush();
-    });
+    // 阶段 1: ping — 构造同时支持人类可读输出和结构化进度的 progress 回调
+    var pingProgress = (config.Silent && !config.ShowProgress) ? null
+        : new SyncProgress<(int Completed, int Qualified)>(p =>
+        {
+            if (!config.Silent)
+            {
+                Console.Write($"\r已测: {p.Completed}/{ips.Count} 可用: {p.Qualified}    ");
+                Console.Out.Flush();
+            }
+            ProgressReporter.ReportPing(config, p.Completed, ips.Count, p.Qualified,
+                totalStages, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        });
 
     IReadOnlyList<IPInfo> delayResults;
     if (config.HttpingMode)
@@ -134,20 +149,17 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
     }
     else
     {
-        // OS 权限预检：向 127.0.0.1 发一次 ICMP，检测当前进程是否有 ICMP 发包权限
-        // 主要解决 Linux 容器（非 root）中 SendPingAsync 抛 SocketException 导致结果全空的问题
+        // OS 权限预检
         var icmpAvailable = await IcmpPinger.CheckIcmpAvailableAsync();
         if (!icmpAvailable)
         {
             if (config.ForceIcmp)
             {
-                // 用户明确传了 -icmp，尊重其选择，打印警告但不切换
                 if (!config.Silent)
                     Console.WriteLine("警告: ICMP 权限预检失败（可能是容器或系统限制），您指定了 -icmp，将强制继续（结果可能为空）。");
             }
             else
             {
-                // 默认模式：自动切换 TCPing，静默模式下不打印（避免干扰脚本输出）
                 if (!config.Silent)
                     Console.WriteLine("提示: 检测到当前环境不支持 ICMP（权限不足或被系统限制），已自动切换为 TCPing 模式。");
                 config.TcpPingMode = true;
@@ -164,7 +176,7 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
             if (!config.Silent) { Console.WriteLine("正在测延迟 (ICMP Ping)..."); Console.Write($"\r已测: 0/{ips.Count} 可用: 0    "); Console.Out.Flush(); }
             delayResults = await IcmpPinger.RunIcmpPingAsync(ips, config, pingProgress, ct);
 
-            // ICMP 有权限但结果全空（网络层屏蔽 ICMP）：默认模式下自动切换 TCPing 重测
+            // ICMP 结果全空时自动切换 TCPing
             if (delayResults.Count == 0 && !config.ForceIcmp)
             {
                 if (!config.Silent)
@@ -180,6 +192,10 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
     }
 
     if (!config.Silent) { Console.WriteLine(); Console.WriteLine($"延迟达标: {delayResults.Count} 个"); }
+
+    // ping_done 摘要
+    ProgressReporter.ReportPingDone(config, ips.Count, delayResults.Count,
+        totalStages, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
     IReadOnlyList<IPInfo> finalResults;
     if (config.DisableSpeedTest)
@@ -197,24 +213,47 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
         {
             var speedTotal = Math.Min(config.SpeedNum, delayResults.Count);
             if (!config.Silent) { Console.WriteLine($"正在测下载速度 ({speedTotal} 个)..."); Console.Write($"\r已测: 0/{speedTotal}    "); Console.Out.Flush(); }
-            var speedProgress = config.Silent ? null : new SyncProgress<int>(c =>
-            {
-                Console.Write($"\r已测: {c}/{speedTotal}    ");
-                Console.Out.Flush();
-            });
+
+            // 阶段 2: speed — 需要追踪最佳速度和最近 IP
+            double bestSpeedSoFar = 0;
+            int speedDoneSoFar = 0;
+            var speedProgress = (config.Silent && !config.ShowProgress) ? null
+                : new SyncProgress<int>(c =>
+                {
+                    speedDoneSoFar = c;
+                    if (!config.Silent)
+                    {
+                        Console.Write($"\r已测: {c}/{speedTotal}    ");
+                        Console.Out.Flush();
+                    }
+                    // 取已完成的最后一个结果作为 latestIp/latestSpeed
+                    var latestResult = c > 0 && c <= delayResults.Count ? delayResults[c - 1] : null;
+                    var latestSpeed  = latestResult?.DownloadSpeedMbps ?? 0;
+                    var latestIp     = latestResult?.IP.ToString() ?? "";
+                    if (latestSpeed > bestSpeedSoFar) bestSpeedSoFar = latestSpeed;
+                    ProgressReporter.ReportSpeed(config, c, speedTotal, totalStages,
+                        bestSpeedSoFar, latestSpeed, latestIp,
+                        DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                });
+
             finalResults = await SpeedTester.RunDownloadSpeedAsync(delayResults, config, speedProgress, ct);
             if (!config.Silent) { await Task.Delay(100); Console.WriteLine(); }
+
+            // speed_done 摘要
+            var speedPassed  = finalResults.Count;
+            var avgSpeed     = speedPassed > 0 ? finalResults.Average(r => r.DownloadSpeedMbps) : 0;
+            var bestSpeedFin = speedPassed > 0 ? finalResults.Max(r => r.DownloadSpeedMbps) : 0;
+            ProgressReporter.ReportSpeedDone(config, speedTotal, speedPassed, totalStages,
+                bestSpeedFin, avgSpeed, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
     }
 
+    var limit = config.OutputNum <= 0 ? 10 : config.OutputNum;
+    var outputResults = finalResults.Take(limit).ToList();
+
     if (config.Silent)
     {
-        // 统一由 -p 控制最终输出的 IP 数量（静默模式也生效）
-        var limit = config.OutputNum <= 0 ? 10 : config.OutputNum;
-        var outputResults = finalResults.Take(limit).ToList();
-
         WriteOnlyIp(config, outputResults);
-        // 静默模式下也正常导出 CSV，方便脚本/自动化读取
         await OutputWriter.ExportCsvAsync(outputResults, config.OutputFile, ct);
         if (outputResults.Count > 0)
         {
@@ -224,16 +263,17 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
     }
     else
     {
-        // 非静默模式下，控制台与 CSV 也统一使用 -p 限制输出 IP 数量
-        var limit = config.OutputNum <= 0 ? 10 : config.OutputNum;
-        var outputResults = finalResults.Take(limit).ToList();
-
         Console.Out.Flush();
         OutputWriter.PrintToConsole(outputResults, config.OutputNum);
         await OutputWriter.ExportCsvAsync(outputResults, config.OutputFile, ct);
         Console.WriteLine($"结果已保存到 {config.OutputFile}");
         Console.Out.Flush();
     }
+
+    // 阶段 output
+    var hostsWillUpdate = config.HostEntries.Count > 0 && outputResults.Count > 0;
+    ProgressReporter.ReportOutput(config, outputResults.Count, totalStages,
+        hostsWillUpdate, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
     return finalResults;
 }
@@ -265,11 +305,21 @@ if (!config.Silent)
     try { Console.OutputEncoding = Encoding.UTF8; } catch { }
 }
 
+// 若启用 -progress，无论 Silent 与否都需要 AutoFlush
+if (config.ShowProgress)
+{
+    try { Console.OutputEncoding = Encoding.UTF8; } catch { }
+    ConsoleHelper.EnableAutoFlush();
+}
+
+var runStartTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
 try
 {
     do
     {
-        var finalResults = await RunSpeedTestAsync(config, cts.Token);
+        var loopStartTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var finalResults = await RunSpeedTestAsync(config, cts.Token, loopStartTs);
         if (finalResults == null)
         {
             if (config.Silent) return;
@@ -283,11 +333,31 @@ try
             HostsUpdater.Update(config, finalResults, log);
         }
 
+        // done 消息（含完整结果）
+        var limit = config.OutputNum <= 0 ? 10 : config.OutputNum;
+        var outputResults = finalResults.Take(limit).ToList();
+        var totalStages = config.DisableSpeedTest ? 4 : 5;
+        var elapsedMs = (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - loopStartTs) * 1000;
+        ProgressReporter.ReportDone(
+            config,
+            totalIps:     0,   // totalIps 由 ReportInit 记录，这里传 0 兼容（父进程已从 init 消息得到）
+            pingPassed:   0,   // 同上，父进程从 ping_done 消息得到
+            speedPassed:  finalResults.Count,
+            outputCount:  outputResults.Count,
+            outputResults: outputResults,
+            totalStages:  totalStages,
+            elapsedMs:    elapsedMs,
+            ts:           DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
         if (scheduleMode == ScheduleMode.None)
             break;
 
         if (!config.Silent)
             Console.WriteLine($"下次执行: {scheduleMode} 模式，等待中... (Ctrl+C 退出)");
+
+        ProgressReporter.ReportScheduleWait(config,
+            nextRunTime: "",
+            ts: DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
         var ok = await Scheduler.WaitUntilNextAsync(config, scheduleMode, cts.Token);
         if (!ok) break;
@@ -328,11 +398,15 @@ try
 }
 catch (OperationCanceledException)
 {
+    ProgressReporter.ReportError(config, "CANCELLED", "用户取消",
+        DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     if (!config.Silent)
         Console.WriteLine("\n已取消。");
 }
-catch (Exception)
+catch (Exception ex)
 {
+    ProgressReporter.ReportError(config, "EXCEPTION", ex.Message,
+        DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     if (config.Silent)
         File.WriteAllText(config.OnlyIpFile, "");
     else
