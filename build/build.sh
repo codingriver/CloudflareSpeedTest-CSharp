@@ -30,8 +30,10 @@
 #         fd+upx           : 效果有限，不推荐
 #         注意: UPX 压缩的文件部分杀软可能误报，面向用户发布时请酌情使用
 #
+#         注意: macOS 的 NativeAOT 输出为 Mach-O 格式，UPX 不支持压缩，macOS 下 -upx 无效。
+#
 #         UPX 安装方式:
-#           macOS   : brew install upx
+#           macOS   : brew install upx  (仅自包含/fd 模式有效，NativeAOT 无效)
 #           Linux   : sudo apt install upx        # Debian/Ubuntu
 #                     sudo yum install upx        # CentOS/RHEL
 #                     sudo pacman -S upx          # Arch

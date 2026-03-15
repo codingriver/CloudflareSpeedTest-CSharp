@@ -29,6 +29,7 @@ static Config ParseArgs(string[] args)
         AllIp = GetBool("-allip"),
         TcpPingMode = GetBool("-tcping"),
         HttpingMode = GetBool("-httping"),
+        ForceIcmp = GetBool("-icmp"),
         HttpingStatusCode = GetInt("-httping-code", 0),
         CfColo = GetArg(args, "-cfcolo"),
         Debug = GetBool("-debug"),
@@ -132,8 +133,49 @@ static async Task<IReadOnlyList<IPInfo>?> RunSpeedTestAsync(Config config, Cance
     }
     else
     {
-        if (!config.Silent) { Console.WriteLine("正在测延迟 (ICMP Ping)..."); Console.Write($"\r已测: 0/{ips.Count} 可用: 0    "); Console.Out.Flush(); }
-        delayResults = await IcmpPinger.RunIcmpPingAsync(ips, config, pingProgress, ct);
+        // OS 权限预检：向 127.0.0.1 发一次 ICMP，检测当前进程是否有 ICMP 发包权限
+        // 主要解决 Linux 容器（非 root）中 SendPingAsync 抛 SocketException 导致结果全空的问题
+        var icmpAvailable = await IcmpPinger.CheckIcmpAvailableAsync();
+        if (!icmpAvailable)
+        {
+            if (config.ForceIcmp)
+            {
+                // 用户明确传了 -icmp，尊重其选择，打印警告但不切换
+                if (!config.Silent)
+                    Console.WriteLine("警告: ICMP 权限预检失败（可能是容器或系统限制），您指定了 -icmp，将强制继续（结果可能为空）。");
+            }
+            else
+            {
+                // 默认模式：自动切换 TCPing，静默模式下不打印（避免干扰脚本输出）
+                if (!config.Silent)
+                    Console.WriteLine("提示: 检测到当前环境不支持 ICMP（权限不足或被系统限制），已自动切换为 TCPing 模式。");
+                config.TcpPingMode = true;
+            }
+        }
+
+        if (config.TcpPingMode)
+        {
+            if (!config.Silent) { Console.WriteLine("正在测延迟 (TCPing)..."); Console.Write($"\r已测: 0/{ips.Count} 可用: 0    "); Console.Out.Flush(); }
+            delayResults = await PingTester.RunTcpPingAsync(ips, config, pingProgress, ct);
+        }
+        else
+        {
+            if (!config.Silent) { Console.WriteLine("正在测延迟 (ICMP Ping)..."); Console.Write($"\r已测: 0/{ips.Count} 可用: 0    "); Console.Out.Flush(); }
+            delayResults = await IcmpPinger.RunIcmpPingAsync(ips, config, pingProgress, ct);
+
+            // ICMP 有权限但结果全空（网络层屏蔽 ICMP）：默认模式下自动切换 TCPing 重测
+            if (delayResults.Count == 0 && !config.ForceIcmp)
+            {
+                if (!config.Silent)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("提示: ICMP 测速结果为空（网络可能屏蔽 ICMP），自动切换为 TCPing 重新检测...");
+                    Console.Write($"\r已测: 0/{ips.Count} 可用: 0    ");
+                    Console.Out.Flush();
+                }
+                delayResults = await PingTester.RunTcpPingAsync(ips, config, pingProgress, ct);
+            }
+        }
     }
 
     if (!config.Silent) { Console.WriteLine(); Console.WriteLine($"延迟达标: {delayResults.Count} 个"); }

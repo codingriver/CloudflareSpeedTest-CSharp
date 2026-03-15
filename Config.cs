@@ -22,6 +22,7 @@ public class Config
     public int OutputNum { get; set; } = 10;
     public bool TcpPingMode { get; set; } = false;  // -tcping 时使用 TCPing
     public bool HttpingMode { get; set; } = false;
+    public bool ForceIcmp { get; set; } = false;  // -icmp 时强制 ICMP，即使预检失败也不自动切换
     public int HttpingStatusCode { get; set; } = 0;  // 0=200/301/302，否则仅接受指定状态码
     public int HttpingTimeoutSeconds { get; set; } = 5;
     public string? CfColo { get; set; }  // 地区码过滤，逗号分隔，如 SJC,NRT,LAX

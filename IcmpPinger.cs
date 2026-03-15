@@ -11,6 +11,24 @@ namespace CloudflareST;
 public static class IcmpPinger
 {
     /// <summary>
+    /// OS 权限预检：向 127.0.0.1 发一次 ICMP，返回是否有发包权限。
+    /// 主要针对 Linux 容器（非 root 无 CAP_NET_RAW 时 SendPingAsync 会抛 SocketException）。
+    /// </summary>
+    public static async Task<bool> CheckIcmpAvailableAsync()
+    {
+        try
+        {
+            using var ping = new Ping();
+            var reply = await ping.SendPingAsync(System.Net.IPAddress.Loopback, 1000);
+            return reply.Status == IPStatus.Success;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 对 IP 列表并发执行 ICMP Ping，返回达标结果
     /// </summary>
     public static async Task<IReadOnlyList<IPInfo>> RunIcmpPingAsync(
