@@ -130,7 +130,7 @@ internal static class ProgressReporter
 
     private static void Emit(string json)
     {
-        CfstRunner.WriteLineLog($"PROGRESS:{json}");
+        // CfstRunner.WriteLineLog($"PROGRESS:{json}");
         Console.Out.Flush();
         CfstRunner.ProgressHandler?.Invoke(json);
     }
