@@ -1,13 +1,36 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
+    <!-- AOT/Trim publish 时只构建 net8.0，避免 SDK 对 netstandard2.1 报 NETSDK1207/NETSDK1124 -->
+    <TargetFrameworks Condition="'$(PublishAot)' == 'true' or '$(PublishTrimmed)' == 'true'">net8.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>CloudflareST</RootNamespace>
     <AssemblyName>cfst</AssemblyName>
     <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!-- net8.0 构建为可执行文件（CLI）；netstandard2.1 构建为类库（Unity DLL） -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Trim 和 SingleFile 只对 net8.0 有效，netstandard2.1 下强制关闭 -->
+    <PublishTrimmed Condition="'$(PublishTrimmed)' == 'true'">true</PublishTrimmed>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+    <OutputType>Library</OutputType>
+    <!-- netstandard2.1 下禁用 ImplicitUsings（global using 是 C# 10 语法）-->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>10</LangVersion>
+    <DefineConstants>$(DefineConstants);UNITY_BUILD</DefineConstants>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IsTrimmable>false</IsTrimmable>
+    <!-- 阻止 netstandard2.1 参与 dotnet publish / AOT（只用于 dotnet build -unity）-->
+    <IsPublishable>false</IsPublishable>
+    <IsAotCompatible>false</IsAotCompatible>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+    <PublishAot>false</PublishAot>
   </PropertyGroup>
 
   <!-- 防止子目录残留的 obj 下自动生成文件被主项目误编译 -->
@@ -22,8 +45,24 @@
     <None Remove="CloudflareST.Cli\**" />
   </ItemGroup>
 
+  <!-- net8.0 目标排除 netstandard 专用 using 文件（已移入 Core\ 目录）-->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <Compile Remove="Core\GlobalUsings.netstandard.cs" />
+  </ItemGroup>
+
+  <!-- netstandard2.1 目标排除 Program.cs（CLI 入口，Unity 不支持顶级语句） -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Cronos" Version="0.8.4" />
+  </ItemGroup>
+
+  <!-- netstandard2.1 下补充 .NET 5+ 内置但 netstandard2.1 缺失的包 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="Microsoft.Bcl.HashCode" Version="1.1.1" />
   </ItemGroup>
 
 </Project>

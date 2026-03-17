@@ -1,0 +1,28 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Windows scripts - enforce CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts - enforce LF
+*.sh text eol=lf
+
+# Source and config files - enforce LF
+*.cs text eol=lf
+*.csproj text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf
+
+# Binary files - no line ending conversion
+*.dll binary
+*.exe binary
+*.png binary
+*.jpg binary
+*.zip binary

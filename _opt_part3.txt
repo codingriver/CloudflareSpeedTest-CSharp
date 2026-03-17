@@ -1,0 +1,71 @@
+
+    // ── Hosts 更新 ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 要更新/添加的域名（参数 -hosts），逗号分隔，支持 * 通配符。默认：null（不启用）。
+    /// <para>
+    /// 示例："cdn.example.com,*.example.com"。
+    /// * 通配符只更新 hosts 中已有匹配条目，无匹配时不新增；精确域名则有则更新无则添加。
+    /// </para>
+    /// <para>
+    /// 权限要求：<br/>
+    /// Windows：需以管理员身份运行；<br/>
+    /// Linux/macOS：需 root 用户或 sudo 运行；<br/>
+    /// 权限不足时不报错，待写入内容输出到 hosts-pending.txt，可手动合并。
+    /// </para>
+    /// <para>GUI：Hosts 更新页「启用 Hosts 更新」复选框（null=不启用）+ 「目标域名」文本框；null 时子控件均置灰。</para>
+    /// </summary>
+    public string? HostsDomains { get; set; }
+
+    /// <summary>
+    /// 使用测速结果第 N 名 IP（参数 -hosts-ip）。默认：1（最快 IP）。
+    /// <para>1-based 排名；0 或负数均视为 1。范围：1~100；步进：1。</para>
+    /// <para>GUI：Hosts 更新页「使用第 N 名 IP」数字输入框；HostsDomains 为 null 时置灰。</para>
+    /// </summary>
+    public int HostsIpRank { get; set; } = 1;
+
+    /// <summary>
+    /// 自定义 hosts 文件路径（参数 -hosts-file）。默认：null（使用系统默认路径）。
+    /// <para>
+    /// 系统默认路径：<br/>
+    /// Windows：<c>C:\Windows\System32\drivers\etc\hosts</c><br/>
+    /// Linux/macOS：<c>/etc/hosts</c>
+    /// </para>
+    /// <para>GUI：Hosts 更新页「Hosts 文件路径」文本框 + 「浏览...」按钮；路径不存在时显示黄色警告「路径不存在，运行时将尝试创建」。</para>
+    /// </summary>
+    public string? HostsFile { get; set; }
+
+    /// <summary>
+    /// 仅预览，不实际写入（参数 -hosts-dry-run）。默认：false。
+    /// <para>true：测速完成后只在控制台/结果页展示待写入内容，不修改系统 hosts 文件，方便验证结果正确性后再决定是否写入。</para>
+    /// <para>GUI：Hosts 更新页「仅预览不写入」复选框；勾选时结果页 Hosts 区域标题显示「(仅预览，未实际写入)」。</para>
+    /// </summary>
+    public bool HostsDryRun { get; set; } = false;
+
+    // ── 结构化进度输出 ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 启用结构化进度行输出（参数 -progress）。默认：false。
+    /// <para>
+    /// 启用后，每条进度消息以 <c>PROGRESS:{json}</c> 格式单独一行输出到 stdout。<br/>
+    /// 与 Silent 正交：<c>-silent -progress</c> 时只输出 PROGRESS: 行和最终 IP 列表。<br/>
+    /// GUI 父进程通过 <c>CfstProcessManager.OnOutput</c> 过滤 <c>PROGRESS:</c> 前缀行并解析 JSON。<br/>
+    /// Unity DLL 调用时可设置 <c>CfstRunner.ProgressHandler</c> 回调直接获取纯 JSON，无需前缀过滤。
+    /// </para>
+    /// <para>
+    /// <b>消息类型（stageName）一览：</b><br/>
+    /// <c>init</c>          (stageIndex=0) — IP 列表加载完成；字段：totalIps, pingMode<br/>
+    /// <c>ping</c>          (stageIndex=1) — 延迟测速进行中（节流：每 1% 或每 50 个 IP）；字段：done, total, passed, passedRate, progressPct<br/>
+    /// <c>ping_done</c>     (stageIndex=1) — 延迟测速完成摘要；字段：total, passed, filtered, passedRate<br/>
+    /// <c>speed</c>         (stageIndex=2) — 下载测速进行中；字段：done, total, progressPct, bestSpeedMbps, latestSpeedMbps, latestIp<br/>
+    /// <c>speed_done</c>    (stageIndex=2) — 下载测速完成摘要；字段：total, passed, filtered, bestSpeedMbps, avgSpeedMbps<br/>
+    /// <c>output</c>        (stageIndex=3) — 写 CSV/Hosts/onlyip 完成；字段：outputCount, hostsUpdated, hostsDryRun<br/>
+    /// <c>done</c>          (stageIndex=4) — 本轮全部完成，含完整结果列表；字段：outputCount, bestDelayMs, bestSpeedMbps, elapsedMs, results[]<br/>
+    /// <c>error</c>         (stageIndex=-1) — 发生错误；字段：errorCode（NO_IPS/CANCELLED/EXCEPTION）, message<br/>
+    /// <c>schedule_wait</c> (stageIndex=-1) — 定时调度等待下次执行；字段：nextRunTime
+    /// </para>
+    /// <para>所有消息均含公共字段：stageIndex, totalStages, stageName, ts（Unix 秒时间戳）。</para>
+    /// <para>GUI：其他设置页「结构化进度输出」复选框；勾选后 cfst 进程输出 PROGRESS: 行，驱动全局进度条和状态栏实时刷新。</para>
+    /// </summary>
+    public bool ShowProgress { get; set; } = false;
+}
