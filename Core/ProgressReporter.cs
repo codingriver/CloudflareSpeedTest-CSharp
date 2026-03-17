@@ -27,7 +27,7 @@ internal static class ProgressReporter
     {
         if (!cfg.ShowProgress) return;
         var threshold = Math.Max(50, total / 100);
-        if (done != total && done - _lastPingReportDone < threshold) return;
+        // if (done != total && done - _lastPingReportDone < threshold) return;
         Interlocked.Exchange(ref _lastPingReportDone, done);
         var passedRate  = done > 0 ? Math.Round((double)passed / done, 4) : 0.0;
         var progressPct = total > 0 ? Math.Round((double)done / total * 100, 2) : 0.0;
@@ -130,7 +130,7 @@ internal static class ProgressReporter
 
     private static void Emit(string json)
     {
-        Console.WriteLine($"PROGRESS:{json}");
+        CfstRunner.WriteLineLog($"PROGRESS:{json}");
         Console.Out.Flush();
         CfstRunner.ProgressHandler?.Invoke(json);
     }

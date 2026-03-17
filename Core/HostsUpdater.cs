@@ -45,7 +45,7 @@ public static class HostsUpdater
         catch (UnauthorizedAccessException)
         {
             var msg = "no permission to write hosts. content saved to hosts-pending.txt";
-            if (log != null) log(msg); else Console.WriteLine(msg);
+            if (log != null) log(msg); else CfstRunner.WriteLineLog(msg);
             File.WriteAllText("hosts-pending.txt", newContent);
             return false;
         }

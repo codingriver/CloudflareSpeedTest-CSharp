@@ -13,14 +13,14 @@ public static class OutputWriter
         var take = Math.Min(maxRows, results.Count);
         if (take == 0)
         {
-            Console.WriteLine("没有符合条件的 IP。");
+            CfstRunner.WriteLineLog("没有符合条件的 IP。");
             return;
         }
 
-        Console.WriteLine();
+        CfstRunner.WriteLineLog();
         var header = Pad("序号", ColNo) + ColGap + Pad("IP 地址", ColIp) + ColGap + Pad("丢包率", ColLoss) + ColGap + Pad("平均延迟", ColDelay) + ColGap + Pad("延迟抖动", ColJitter) + ColGap + Pad("下载速度", ColSpeed) + ColGap + Pad("地区码", ColColo) + ColGap + Pad("地区", ColRegion);
-        Console.WriteLine(header);
-        Console.WriteLine(new string('-', GetDisplayWidth(header)));
+        CfstRunner.WriteLineLog(header);
+        CfstRunner.WriteLineLog(new string('-', GetDisplayWidth(header)));
 
         for (var i = 0; i < take; i++)
         {
@@ -31,10 +31,10 @@ public static class OutputWriter
             var speed = r.DownloadSpeedMbps > 0 ? $"{r.DownloadSpeedMbps:F2} Mbps" : "-";
             var colo = string.IsNullOrEmpty(r.Colo) ? "N/A" : r.Colo;
             var coloZh = ColoProvider.GetColoNameZh(r.Colo);
-            Console.WriteLine(Pad($"{i + 1}", ColNo) + ColGap + Pad($"{r.IP}", ColIp) + ColGap + Pad(loss, ColLoss) + ColGap + Pad(delay, ColDelay) + ColGap + Pad(jitter, ColJitter) + ColGap + Pad(speed, ColSpeed) + ColGap + Pad(colo, ColColo) + ColGap + Pad(coloZh, ColRegion));
+            CfstRunner.WriteLineLog(Pad($"{i + 1}", ColNo) + ColGap + Pad($"{r.IP}", ColIp) + ColGap + Pad(loss, ColLoss) + ColGap + Pad(delay, ColDelay) + ColGap + Pad(jitter, ColJitter) + ColGap + Pad(speed, ColSpeed) + ColGap + Pad(colo, ColColo) + ColGap + Pad(coloZh, ColRegion));
         }
 
-        Console.WriteLine();
+        CfstRunner.WriteLineLog();
     }
 
     /// <summary>

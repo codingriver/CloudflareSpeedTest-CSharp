@@ -91,7 +91,7 @@ public static class HttpingTester
 
             var preResp = await client.SendAsync(preReq, CancellationToken.None);
             if (config.Debug)
-                Console.WriteLine($"[调试] IP: {ip}, StatusCode: {(int)preResp.StatusCode}, URL: {config.SpeedUrl}");
+                CfstRunner.WriteLineLog($"[调试] IP: {ip}, StatusCode: {(int)preResp.StatusCode}, URL: {config.SpeedUrl}");
             if (!IsValidStatusCode((int)preResp.StatusCode, config))
                 return (0, 0, null, new List<double>());
 
@@ -131,7 +131,7 @@ public static class HttpingTester
         catch (Exception ex)
         {
             if (config.Debug)
-                Console.WriteLine($"[调试] IP: {ip}, 异常: {ex.Message}");
+                CfstRunner.WriteLineLog($"[调试] IP: {ip}, 异常: {ex.Message}");
             return (0, 0, null, new List<double>());
         }
     }

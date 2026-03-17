@@ -96,7 +96,7 @@ public static class IpProvider
         }
 
         var fileName = Path.GetFileName(path);
-        if (!silent) Console.WriteLine($"本地无 {fileName}，正在从 CDN 下载...");
+        if (!silent) CfstRunner.WriteLineLog($"本地无 {fileName}，正在从 CDN 下载...");
         Exception? lastEx = null;
         foreach (var url in urls)
         {
@@ -110,7 +110,7 @@ public static class IpProvider
                 if (!string.IsNullOrEmpty(dir))
                     Directory.CreateDirectory(dir);
                 await File.WriteAllTextAsync(path, content, ct);
-                if (!silent) Console.WriteLine($"已保存到 {path}");
+                if (!silent) CfstRunner.WriteLineLog($"已保存到 {path}");
                 var lines = content.Split('\n');
                 ranges.AddRange(lines.Where(l => !string.IsNullOrWhiteSpace(l) && !l.TrimStart().StartsWith('#')));
                 return;

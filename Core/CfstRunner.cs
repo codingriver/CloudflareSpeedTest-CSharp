@@ -44,13 +44,13 @@ public static class CfstRunner
     }
 
     /// <summary>内部日志输出，走 LogHandler 回调或 Console.WriteLine。</summary>
-    private static void Log(string msg) => (LogHandler ?? Console.WriteLine)(msg);
+    private static void Log(string msg) => WriteLineLog(msg);
 
     /// <summary>内部进度输出（不换行），走 LogHandler 回调或 Console.Write。</summary>
     private static void LogInline(string msg)
     {
         if (LogHandler != null) LogHandler(msg);
-        else { Console.Write(msg); Console.Out.Flush(); }
+        else { WriteLog(msg); Console.Out.Flush(); }
     }
 
 
@@ -106,7 +106,7 @@ public static class CfstRunner
 
                 if (config.HostEntries.Count > 0 && finalResults.Count > 0)
                 {
-                    var log = (config.HostsDryRun || !config.Silent) ? (Action<string>)Console.WriteLine : null;
+                    var log = (config.HostsDryRun || !config.Silent) ? (Action<string>)CfstRunner.WriteLineLog : null;
                     HostsUpdater.Update(config, finalResults, log);
                 }
 
@@ -229,19 +229,19 @@ public static class CfstRunner
         var pingProgress = (config.Silent && !config.ShowProgress) ? null
             : new SyncProgress<(int Completed, int Qualified)>(p =>
             {
-                if (!config.Silent) { Console.Write(String.Format("\rTested: {0}/{1} OK: {2}    ", p.Completed, ips.Count, p.Qualified)); Console.Out.Flush(); }
+                if (!config.Silent) { WriteLog(String.Format("\rTested: {0}/{1} OK: {2}    ", p.Completed, ips.Count, p.Qualified)); Console.Out.Flush(); }
                 ProgressReporter.ReportPing(config, p.Completed, ips.Count, p.Qualified, totalStages, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             });
 
         IReadOnlyList<IPInfo> delayResults;
         if (config.HttpingMode)
         {
-            if (!config.Silent) { Console.WriteLine("Testing latency (HTTPing)..."); Console.Out.Flush(); }
+            if (!config.Silent) { CfstRunner.WriteLineLog("Testing latency (HTTPing)..."); Console.Out.Flush(); }
             delayResults = await HttpingTester.RunHttpingAsync(ips, config, pingProgress, ct);
         }
         else if (config.TcpPingMode)
         {
-            if (!config.Silent) { Console.WriteLine("Testing latency (TCPing)..."); Console.Out.Flush(); }
+            if (!config.Silent) { CfstRunner.WriteLineLog("Testing latency (TCPing)..."); Console.Out.Flush(); }
             delayResults = await PingTester.RunTcpPingAsync(ips, config, pingProgress, ct);
         }
         else
@@ -254,12 +254,12 @@ public static class CfstRunner
             }
             if (config.TcpPingMode)
             {
-                if (!config.Silent) { Console.WriteLine("Testing latency (TCPing)..."); Console.Out.Flush(); }
+                if (!config.Silent) { CfstRunner.WriteLineLog("Testing latency (TCPing)..."); Console.Out.Flush(); }
                 delayResults = await PingTester.RunTcpPingAsync(ips, config, pingProgress, ct);
             }
             else
             {
-                if (!config.Silent) { Console.WriteLine("Testing latency (ICMP)..."); Console.Out.Flush(); }
+                if (!config.Silent) { CfstRunner.WriteLineLog("Testing latency (ICMP)..."); Console.Out.Flush(); }
                 delayResults = await IcmpPinger.RunIcmpPingAsync(ips, config, pingProgress, ct);
                 if (delayResults.Count == 0 && !config.ForceIcmp)
                 {
@@ -285,12 +285,12 @@ public static class CfstRunner
         else
         {
             var speedTotal = Math.Min(config.SpeedNum, delayResults.Count);
-            if (!config.Silent) { Console.WriteLine(String.Format("Testing download speed ({0})...", speedTotal)); Console.Out.Flush(); }
+            if (!config.Silent) { CfstRunner.WriteLineLog(String.Format("Testing download speed ({0})...", speedTotal)); Console.Out.Flush(); }
             double bestSpeedSoFar = 0;
             var speedProgress = (config.Silent && !config.ShowProgress) ? null
                 : new SyncProgress<int>(c =>
                 {
-                    if (!config.Silent) { Console.Write(String.Format("\rTested: {0}/{1}    ", c, speedTotal)); Console.Out.Flush(); }
+                    if (!config.Silent) { WriteLog(String.Format("\rTested: {0}/{1}    ", c, speedTotal)); Console.Out.Flush(); }
                     var lr = c > 0 && c <= delayResults.Count ? delayResults[c - 1] : null;
                     var ls = lr?.DownloadSpeedMbps ?? 0; var li = lr?.IP.ToString() ?? "";
                     if (ls > bestSpeedSoFar) bestSpeedSoFar = ls;
@@ -395,5 +395,25 @@ public static class CfstRunner
     private static bool IsWindows()
         => System.Runtime.InteropServices.RuntimeInformation
             .IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+
+    public static void WriteLog(string str)
+    {
+        if (LogHandler != null) LogHandler(str);
+        else        
+            Console.Write(str);
+    }
+    public static void WriteLineLog()
+    {
+        if (LogHandler != null) LogHandler("");
+        else        
+            Console.WriteLine();
+    }
+
+    public static void WriteLineLog(string str)
+    {
+        if (LogHandler != null) LogHandler(str);
+        else
+            Console.WriteLine(str);
+    }    
 }
 }
