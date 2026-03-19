@@ -92,6 +92,25 @@ $Targets = @{
     'osx-arm64' = @{ Rid = 'osx-arm64'; Exe = 'cfst';     Desc = 'macOS Apple Silicon (M1/M2/M3)' }
 }
 
+function Write-BuildOutput {
+    param([string[]]$output)
+    $hasError = $false
+    foreach ($line in $output) {
+        # 跳过已过滤的 SDK 警告和纯 warning 行
+        if ($line -match 'NETSDK1124|NETSDK1207') { continue }
+        if ($line -match ':\s*warning\s') { continue }
+        if ($line -match '^\s*warning\s') { continue }
+        # error 行红色显示
+        if ($line -match ':\s*error\s|^\s*error\s|生成失败|Build FAILED') {
+            Write-Host $line -ForegroundColor Red
+            $hasError = $true
+        } else {
+            Write-Host $line
+        }
+    }
+    return $hasError
+}
+
 function Publish-Rid {
     param([string]$Rid, [string]$Desc, [string]$Exe, [bool]$FrameworkDependent, [bool]$NativeAot, [bool]$UseUpx)
     $suffix = ''
@@ -110,7 +129,6 @@ function Publish-Rid {
             -p:StripSymbols=true `
             -o $OutDir `
             $ProjectRoot 2>&1
-        $output | Where-Object { $_ -notmatch 'NETSDK1124|NETSDK1207' } | ForEach-Object { $_ }
     } elseif ($FrameworkDependent) {
         $output = dotnet publish -r $Rid -f net8.0 -c Release --self-contained false `
             -p:NoWarn=NETSDK1124 `
@@ -119,7 +137,6 @@ function Publish-Rid {
             -p:EnableCompressionInSingleFile=false `
             -o $OutDir `
             $ProjectRoot 2>&1
-        $output | Where-Object { $_ -notmatch 'NETSDK1124|NETSDK1207' } | ForEach-Object { $_ }
     } else {
         $output = dotnet publish -r $Rid -f net8.0 -c Release --self-contained true `
             -p:NoWarn=NETSDK1124 `
@@ -128,8 +145,10 @@ function Publish-Rid {
             -p:EnableCompressionInSingleFile=true `
             -o $OutDir `
             $ProjectRoot 2>&1
-        $output | Where-Object { $_ -notmatch 'NETSDK1124|NETSDK1207' } | ForEach-Object { $_ }
     }
+
+    $hasError = Write-BuildOutput -output $output
+    if ($hasError) { return }
 
     $ExePath = Join-Path $OutDir $Exe
     if (-not (Test-Path $ExePath)) { return }
@@ -202,7 +221,11 @@ try {
             -p:CopyLocalLockFileAssemblies=true `
             -o $UnityOutDir `
             $ProjectRoot 2>&1
-        $buildOutput | Where-Object { $_ -notmatch 'NETSDK1124|NETSDK1207' } | ForEach-Object { $_ }
+        $unityHasError = Write-BuildOutput -output $buildOutput
+        if ($unityHasError) {
+            Write-Host "    [错误] Unity DLL 构建失败，已中止。" -ForegroundColor Red
+            return
+        }
         # 收集 Unity 所需文件：主 DLL + Cronos.dll
         $dllFiles = @(
             (Join-Path $UnityOutDir 'cfst.dll'),

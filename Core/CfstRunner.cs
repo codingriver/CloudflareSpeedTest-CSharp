@@ -327,7 +327,7 @@ public static class CfstRunner
             OutputWriter.PrintToConsole(outputResults, config.OutputNum);
             await OutputWriter.ExportCsvAsync(outputResults, config.OutputFile, ct);
             Log(String.Format("Results saved to {0}", config.OutputFile));
-            if (config.OutputOnlyIpFile)
+            if (config.OnlyIpFile != null)
             {
                 WriteOnlyIp(config, outputResults);
                 Log(String.Format("IP list saved to {0}", config.OnlyIpFile));
