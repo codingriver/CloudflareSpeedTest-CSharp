@@ -221,14 +221,14 @@ dotnet build
 | `-sl` | 0 | 速度下限(MB/s)，低于则过滤 |
 | `-dd` | false | 禁用下载测速 |
 | **输出** | | |
-| `-o` | result.csv | 输出 CSV 文件 |
-| `-outputdir` | - | 指定输出目录，result.csv 和 onlyip.txt 均输出到该目录（不指定则保持当前逻辑） |
+| `-o` | result.csv | 输出 CSV 文件路径；仅文件名时与当前目录拼接，含路径分隔符时直接使用 |
+| `-onlyip` | - | 输出纯 IP 列表文件路径；传了此参数才输出（silent 模式默认输出到 `onlyip.txt`）；仅文件名时与当前目录拼接，含路径分隔符时直接使用，如 `-onlyip ./out/myips.txt` |
 | `-p` | 10 | 最终输出的 IP 数量上限（控制台、CSV、静默模式 onlyip.txt 均受此限制；传 0 或负数时按 10 处理） |
+| `-cdnproxy` | - | CDN 下载 IP 文件时使用的 HTTP 代理，如 `-cdnproxy http://127.0.0.1:7890`；不传则不使用任何代理（包括系统代理） |
 | **其他** | | |
 | `-allip` | false | 全量 IP（默认每/24 随机一个） |
 | `-debug` | false | 调试输出 |
 | `-silent` / `-q` | false | 静默模式：只输出 IP，每行一个，适合脚本调用 |
-| `-onlyip` | onlyip.txt | 静默模式下的 IP 输出文件 |
 | **定时调度** | | |
 | `-interval` | 0 | 间隔分钟数，>0 时每 N 分钟执行一次 |
 | `-at` | - | 每日定点，如 "6:00,18:00" |

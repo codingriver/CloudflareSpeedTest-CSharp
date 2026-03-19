@@ -52,7 +52,7 @@ public static class IpProvider
             {
                 var fileName = Path.GetFileName(filePath).ToLowerInvariant();
                 var urls = fileName.Contains("v6") || fileName.Contains("ipv6") ? Ipv6Urls : IpUrls;
-                await EnsureAndLoadFileAsync(filePath, urls, ranges, config.Silent, ct);
+                await EnsureAndLoadFileAsync(filePath, urls, ranges, config.Silent, ct, config.CdnProxy);
             }
         }
 
@@ -86,7 +86,7 @@ public static class IpProvider
         return result;
     }
 
-    private static async Task EnsureAndLoadFileAsync(string path, string[] urls, List<string> ranges, bool silent, CancellationToken ct)
+    private static async Task EnsureAndLoadFileAsync(string path, string[] urls, List<string> ranges, bool silent, CancellationToken ct, string? proxyUrl = null)
     {
         if (File.Exists(path))
         {
@@ -96,13 +96,22 @@ public static class IpProvider
         }
 
         var fileName = Path.GetFileName(path);
-        if (!silent) CfstRunner.WriteLineLog($"本地无 {fileName}，正在从 CDN 下载...");
+        if (!silent)
+        {
+            var proxyInfo = string.IsNullOrEmpty(proxyUrl) ? "不使用代理" : $"代理: {proxyUrl}";
+            CfstRunner.WriteLineLog($"本地无 {fileName}，正在从 CDN 下载... ({proxyInfo})");
+        }
         Exception? lastEx = null;
         foreach (var url in urls)
         {
             try
             {
-                using var client = CreateHttpClient();
+                if (!silent)
+                {
+                    var proxyTag = string.IsNullOrEmpty(proxyUrl) ? "[直连]" : $"[代理 {proxyUrl}]";
+                    CfstRunner.WriteLineLog($"  尝试 {proxyTag}: {url}");
+                }
+                using var client = CreateHttpClient(proxyUrl);
                 var content = await client.GetStringAsync(url);
                 if (string.IsNullOrWhiteSpace(content) || content.Length < 10)
                     continue;
@@ -118,14 +127,25 @@ public static class IpProvider
             catch (Exception ex)
             {
                 lastEx = ex;
+                if (!silent) CfstRunner.WriteLineLog($"  失败: {ex.Message}");
             }
         }
         throw new InvalidOperationException($"无法下载 IP 文件 {path}，已尝试 {urls.Length} 个源：{lastEx?.Message}", lastEx);
     }
 
-    private static HttpClient CreateHttpClient()
+    private static HttpClient CreateHttpClient(string? proxyUrl = null)
     {
         var handler = new HttpClientHandler();
+        if (!string.IsNullOrEmpty(proxyUrl))
+        {
+            handler.UseProxy = true;
+            handler.Proxy = new System.Net.WebProxy(proxyUrl);
+        }
+        else
+        {
+            // 显式禁用系统/环境变量代理
+            handler.UseProxy = false;
+        }
         return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
     }
 

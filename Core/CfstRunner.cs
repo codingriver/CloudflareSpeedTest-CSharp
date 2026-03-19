@@ -67,8 +67,17 @@ public static class CfstRunner
         if (!string.IsNullOrEmpty(config.OutputDir))
         {
             Directory.CreateDirectory(config.OutputDir);
-            config.OutputFile = Path.Combine(config.OutputDir, Path.GetFileName(config.OutputFile));
-            config.OnlyIpFile = Path.Combine(config.OutputDir, Path.GetFileName(config.OnlyIpFile));
+            // OutputFile: 仅文件名时受 -outputdir 影响；已含路径分隔符时直接使用原路径
+            if (config.OutputFile.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) < 0)
+            {
+                config.OutputFile = Path.Combine(config.OutputDir, config.OutputFile);
+            }
+            // OnlyIpFile: 仅文件名时受 -outputdir 影响；已含路径分隔符时直接使用原路径
+            if (config.OnlyIpFile != null &&
+                config.OnlyIpFile.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) < 0)
+            {
+                config.OnlyIpFile = Path.Combine(config.OutputDir, config.OnlyIpFile);
+            }
         }
 
         var scheduleMode = Scheduler.GetMode(config);
@@ -175,7 +184,7 @@ public static class CfstRunner
             ProgressReporter.ReportError(config, "EXCEPTION", ex.Message,
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             if (config.Silent)
-                File.WriteAllText(config.OnlyIpFile, "");
+                File.WriteAllText(config.OnlyIpFile ?? "onlyip.txt", "");
             else
                 throw;
             return 1;
@@ -318,6 +327,11 @@ public static class CfstRunner
             OutputWriter.PrintToConsole(outputResults, config.OutputNum);
             await OutputWriter.ExportCsvAsync(outputResults, config.OutputFile, ct);
             Log(String.Format("Results saved to {0}", config.OutputFile));
+            if (config.OutputOnlyIpFile)
+            {
+                WriteOnlyIp(config, outputResults);
+                Log(String.Format("IP list saved to {0}", config.OnlyIpFile));
+            }
             Console.Out.Flush();
         }
         ProgressReporter.ReportOutput(config, outputResults.Count, totalStages,
@@ -347,11 +361,12 @@ public static class CfstRunner
             ForceIcmp = GetBool("-icmp"), HttpingStatusCode = GetInt("-httping-code", 0),
             CfColo = GetArg(args, "-cfcolo"), Debug = GetBool("-debug"),
             Silent = GetBool("-silent") || GetBool("-q"),
-            OnlyIpFile = Get("-onlyip", "onlyip.txt"), OutputDir = GetArg(args, "-outputdir"),
+            OnlyIpFile = GetArg(args, "-onlyip"), OutputDir = GetArg(args, "-outputdir"),
             IntervalMinutes = GetInt("-interval", 0), AtTimes = GetArg(args, "-at"),
             CronExpression = GetArg(args, "-cron"), TimeZoneId = GetArg(args, "-tz"),
             HostEntries = ParseHostEntries(args), HostsFilePath = GetArg(args, "-hosts-file"),
             HostsDryRun = GetBool("-hosts-dry-run"), ShowProgress = GetBool("-progress"),
+            CdnProxy = GetArg(args, "-cdnproxy"),
         };
     }
 

@@ -57,7 +57,11 @@ internal static class ConsoleHelper
 
     /// <summary>
     /// 设置 Console.Out 为 AutoFlush，确保每次写入立即刷新到控制台
+    /// Unity/netstandard2.1 构建下跳过（dotnet build 重定向 stdout，OpenStandardOutput 可能返回已关闭流）
     /// </summary>
+#if UNITY_BUILD
+    public static void EnableAutoFlush() { }
+#else
     public static void EnableAutoFlush()
     {
         try
@@ -70,5 +74,6 @@ internal static class ConsoleHelper
             // 重定向等场景可能失败，忽略
         }
     }
+#endif
 }
 }

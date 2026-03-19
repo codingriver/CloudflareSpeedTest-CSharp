@@ -19,8 +19,13 @@ public class Config
     public string? IpRanges { get; set; }
     public int MaxIpCount { get; set; } = 0;  // 0=不限制，>0 时随机抽取指定数量
     public string OutputFile { get; set; } = "result.csv";
-    public string OnlyIpFile { get; set; } = "onlyip.txt";
-    public string? OutputDir { get; set; }  // -outputdir 指定 csv 和 onlyip.txt 的输出目录
+    /// <summary>
+    /// onlyip 输出文件路径。null 表示不输出（未传 -onlyip 时）。
+    /// 传 -onlyip 时：仅文件名 → 受 -outputdir 影响；含路径分隔符 → 直接用绝对/相对完整路径。
+    /// silent 模式下若为 null 则用默认值 "onlyip.txt"。
+    /// </summary>
+    public string? OnlyIpFile { get; set; } = null;
+    public string? OutputDir { get; set; }  // -outputdir 指定 csv 输出目录，以及仅文件名的 OnlyIpFile 的目录
     public int OutputNum { get; set; } = 10;
     public bool TcpPingMode { get; set; } = false;  // -tcping 时使用 TCPing
     public bool HttpingMode { get; set; } = false;
@@ -55,6 +60,14 @@ public class Config
     /// 与 -silent 正交：-silent -progress 时仅输出 PROGRESS: 行和最终 IP 列表。
     /// </summary>
     public bool ShowProgress { get; set; } = false;
+
+    // CDN 下载 IP 列表代理
+    /// <summary>
+    /// CDN 下载 IP 文件时使用的 HTTP 代理地址，如 http://127.0.0.1:7890。
+    /// 不设置时显式禁用系统代理（不读取环境变量）。
+    /// 仅影响 IpProvider 中的 CDN 下载，不影响测速/Ping。
+    /// </summary>
+    public string? CdnProxy { get; set; }
 }
 
 /// <summary>
