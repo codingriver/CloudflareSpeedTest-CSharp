@@ -127,7 +127,18 @@ public static class IpProvider
             catch (Exception ex)
             {
                 lastEx = ex;
-                if (!silent) CfstRunner.WriteLineLog($"  失败: {ex.Message}");
+                if (!silent)
+                {
+                    // 展开完整异常链，便于定位根因
+                    var sb = new System.Text.StringBuilder();
+                    var e = ex;
+                    while (e != null)
+                    {
+                        sb.Append(e.GetType().Name).Append(": ").AppendLine(e.Message);
+                        e = e.InnerException;
+                    }
+                    CfstRunner.WriteLineLog($"  失败: {sb.ToString().TrimEnd()}");
+                }
             }
         }
         throw new InvalidOperationException($"无法下载 IP 文件 {path}，已尝试 {urls.Length} 个源：{lastEx?.Message}", lastEx);
