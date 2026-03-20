@@ -32,8 +32,9 @@ public static class HostsUpdater
             ApplyUpdatesInPlace(lines, patterns, ip, out var added);
             allAdded.AddRange(added);
         }
-        var newContent = string.Join(Environment.NewLine, lines.Select(l => l.IsComment ? l.Raw : $"{l.IP}  {string.Join("  ", l.Domains!)}"));
-        if (!newContent.EndsWith(Environment.NewLine) && lines.Count > 0) newContent += Environment.NewLine;
+        // 统一用 \n 拼接，避免 Raw 含 \r 与 Environment.NewLine(\r\n) 叠加成 \r\r\n 导致行数翻倍增长
+        var newContent = string.Join("\n", lines.Select(l => l.IsComment ? l.Raw : $"{l.IP}  {string.Join("  ", l.Domains!)}"));
+        if (!newContent.EndsWith("\n") && lines.Count > 0) newContent += "\n";
         if (config.HostsDryRun) { log?.Invoke("[dry-run]"); log?.Invoke(newContent); return true; }
         try
         {
@@ -82,15 +83,17 @@ public static class HostsUpdater
     private static List<HostsLine> ParseHostsLines(string content)
     {
         var lines = new List<HostsLine>();
+        // 统一按 \n 分割，同时去除每行末尾的 \r（兼容 Windows \r\n 和 Unix \n）
         foreach (var line in content.Split('\n'))
         {
-            var trimmed = line.TrimEnd();
-            if (string.IsNullOrWhiteSpace(trimmed)) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
-            if (trimmed.StartsWith('#')) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
+            var raw = line.TrimEnd('\r');  // 去掉 \r，保留干净内容
+            var trimmed = raw.TrimEnd();
+            if (string.IsNullOrWhiteSpace(trimmed)) { lines.Add(new HostsLine { Raw = raw, IsComment = true }); continue; }
+            if (trimmed.StartsWith('#')) { lines.Add(new HostsLine { Raw = raw, IsComment = true }); continue; }
             var parts = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
-            if (!IPAddress.TryParse(parts[0], out _)) { lines.Add(new HostsLine { Raw = line, IsComment = true }); continue; }
-            lines.Add(new HostsLine { Raw = line, IP = parts[0], Domains = parts.Skip(1).ToList(), IsComment = false });
+            if (parts.Length < 2) { lines.Add(new HostsLine { Raw = raw, IsComment = true }); continue; }
+            if (!IPAddress.TryParse(parts[0], out _)) { lines.Add(new HostsLine { Raw = raw, IsComment = true }); continue; }
+            lines.Add(new HostsLine { Raw = raw, IP = parts[0], Domains = parts.Skip(1).ToList(), IsComment = false });
         }
         return lines;
     }
