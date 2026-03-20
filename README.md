@@ -141,10 +141,10 @@ chmod +x cfst-macos-x64    # 或 cfst-macos-arm64
 
 ```bash
 # 测速后更新 hosts，有则更新、无则添加
-./cfst -hosts "cdn.example.com,*.example.com" -silent
+./cfst -host "cdn.example.com" -host "*.example.com" -silent
 
 # 使用第 2 名 IP，仅预览不写入
-./cfst -hosts "a.com" -hosts-ip 2 -hosts-dry-run
+./cfst -host "a.com" 2 -hosts-dry-run
 ```
 
 ### 定时调度 + Hosts 综合示例
@@ -152,17 +152,17 @@ chmod +x cfst-macos-x64    # 或 cfst-macos-arm64
 
 ```bash
 # TCPing 测速，每 12 小时执行，更新 hosts
-./cfst -tcping -interval 720 -hosts "a.b.com" -silent 
+./cfst -tcping -interval 720 -host "a.b.com" -silent 
 
 # HTTPing 测速，每天早上 6 点执行，更新 hosts
-./cfst -httping -at "6:00" -hosts "a.b.com,c.b.com" -silent
+./cfst -httping -at "6:00" -host "a.b.com" -host "c.b.com" -silent
 
 # TCPing 测速，每周一早上 5:30 执行，更新 hosts（Cron 格式：分 时 日 月 周）
 # *.d.com代表是更新hosts中匹配到d.com的域名，如果没有则不更新也不写入新的，可以手动先加好在用这个
-./cfst -tcping -cron "30 5 * * 1" -hosts "*.d.com" -silent 
+./cfst -tcping -cron "30 5 * * 1" -host "*.d.com" -silent 
 
 # HTTPing 测速，每天 6:00 和 18:00，多域名 hosts
-./cfst -httping -at "6:00,18:00" -hosts "cdn.example.com,api.example.com,*.example.com"
+./cfst -httping -at "6:00,18:00" -host "cdn.example.com" -host "api.example.com" -host "*.example.com"
 ```
 
 **注意**：  
@@ -198,49 +198,47 @@ dotnet build
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | **IP 来源** | | |
-| `-f` | ip.txt | IPv4 段文件 |
-| `-f6` | ipv6.txt | IPv6 段文件 |
-| `-ip` | - | 直接指定 CIDR，逗号分隔 |
-| `-ipn` | 0 | 加载 IP 数量上限，0=不限制 |
+| `-f <file>` | ip.txt ipv6.txt | IP 段文件路径，可多次指定：`-f ip.txt -f ipv6.txt`；未指定时默认同时加载 `ip.txt` 和 `ipv6.txt` |
+| `-ip <cidr>` | - | 直接指定 CIDR，逗号分隔，如 `-ip "173.245.48.0/20,104.16.0.0/13"` |
+| `-ipn <n>` | 0 | 加载 IP 数量上限，0=不限制，>0 时随机抽取指定数量 |
 | **延迟测速** | | |
-| `-n` | 200 | 延迟测速并发数 |
-| `-t` | 4 | 单 IP 测速次数 |
-| `-tl` | 9999 | 延迟上限(ms) |
-| `-tll` | 0 | 延迟下限(ms) |
-| `-tlr` | 1.0 | 丢包率上限 |
-| `-tcping` | false | 使用 TCPing（默认 ICMP） |
-| `-httping` | false | 使用 HTTPing |
+| `-n <n>` | 200 | 延迟测速并发数 |
+| `-t <n>` | 4 | 单 IP 测速次数（发包数） |
+| `-tl <ms>` | 9999 | 延迟上限(ms)，超过则过滤 |
+| `-tll <ms>` | 0 | 延迟下限(ms)，低于则过滤 |
+| `-tlr <rate>` | 1.0 | 丢包率上限（0.0~1.0），超过则过滤 |
+| `-tcping` | false | 使用 TCPing（默认 ICMP，无权限时自动切换） |
+| `-httping` | false | 使用 HTTPing（同时可获取地区码） |
 | `-icmp` | false | 强制使用 ICMP，禁止自动切换 TCPing |
-| `-httping-code` | 0 | 有效状态码，0=200/301/302 |
-| `-cfcolo` | - | 地区码过滤（仅 HTTPing） |
+| `-httping-code <code>` | 0 | HTTPing 有效状态码，0=接受 200/301/302，否则仅接受指定状态码 |
+| `-cfcolo <codes>` | - | 地区码过滤，逗号分隔（仅 HTTPing），如 `-cfcolo "HKG,NRT,LAX"` |
 | **下载测速** | | |
-| `-url` | Cloudflare 官方 | 测速下载地址 |
-| `-tp` | 443 | 测速端口（HTTP 用 80） |
-| `-dn` | 10 | 参与下载测速的 IP 数（仅决定实际测速数量，不再影响最终可用 IP 数量） |
-| `-dt` | 10 | 下载测速超时(秒) |
-| `-sl` | 0 | 速度下限(MB/s)，低于则过滤 |
-| `-dd` | false | 禁用下载测速 |
+| `-url <url>` | Cloudflare 官方 | 测速下载地址，默认 `https://speed.cloudflare.com/__down?bytes=52428800` |
+| `-tp <port>` | 443 | 测速端口，HTTP 测速用 80 |
+| `-dn <n>` | 10 | 参与下载测速的 IP 数量上限 |
+| `-dt <sec>` | 10 | 下载测速超时(秒) |
+| `-sl <mbps>` | 0 | 速度下限(MB/s)，低于则过滤，0=不限制 |
+| `-dd` | false | 禁用下载测速，仅测延迟 |
 | **输出** | | |
-| `-o` | result.csv | 输出 CSV 文件路径；仅文件名时与当前目录拼接，含路径分隔符时直接使用 |
-| `-onlyip` | - | 输出纯 IP 列表文件路径；传了此参数才输出（silent 模式默认输出到 `onlyip.txt`）；仅文件名时与当前目录拼接，含路径分隔符时直接使用，如 `-onlyip ./out/myips.txt` |
-| `-p` | 10 | 最终输出的 IP 数量上限（控制台、CSV、静默模式 onlyip.txt 均受此限制；传 0 或负数时按 10 处理） |
-| `-cdnproxy` | - | CDN 下载 IP 文件时使用的 HTTP 代理，如 `-cdnproxy http://127.0.0.1:7890`；不传则不使用任何代理（包括系统代理） |
+| `-o <path>` | result.csv | 输出 CSV 文件路径；仅文件名时与当前目录（或 `-outputdir`）拼接，含路径分隔符时直接使用 |
+| `-p <n>` | 10 | 最终输出的 IP 数量上限（控制台、CSV、onlyip.txt 均受此限制；0 或负数时按 10 处理） |
+| `-onlyip <path>` | - | 输出纯 IP 列表文件路径；**传了此参数才输出**（silent 模式未传时默认输出到 `onlyip.txt`）；仅文件名受 `-outputdir` 影响，含路径分隔符时直接使用 |
+| `-cdnproxy <url>` | - | CDN 自动下载 IP 文件时使用的 HTTP 代理，如 `-cdnproxy http://127.0.0.1:7890`；不传则不使用任何代理（含系统代理） |
 | **其他** | | |
-| `-allip` | false | 全量 IP（默认每/24 随机一个） |
+| `-allip` | false | 全量 IP 模式（默认每 /24 随机取一个，开启后遍历全部） |
 | `-debug` | false | 调试输出 |
-| `-silent` / `-q` | false | 静默模式：只输出 IP，每行一个，适合脚本调用 |
+| `-silent` / `-q` | false | 静默模式：只输出 IP，每行一个，适合脚本/管道调用 |
 | **定时调度** | | |
-| `-interval` | 0 | 间隔分钟数，>0 时每 N 分钟执行一次 |
-| `-at` | - | 每日定点，如 "6:00,18:00" |
-| `-cron` | - | Cron 表达式 |
-| `-tz` | 本地 | 时区（仅 -at/-cron 适用） |
-| **Hosts** | | |
-| `-hosts` | - | 要更新/添加的域名，如 "a.com,*.b.com" |
-| `-hosts-ip` | 1 | 使用测速结果第 N 名 IP |
-| `-hosts-file` | 系统默认 | 自定义 hosts 路径 |
-| `-hosts-dry-run` | false | 仅输出待写入内容，不实际写入 |
+| `-interval <min>` | 0 | 间隔分钟数，>0 时每 N 分钟循环执行一次 |
+| `-at <times>` | - | 每日定点执行，如 `-at "6:00,18:00"` |
+| `-cron <expr>` | - | Cron 表达式，如 `-cron "0 */6 * * *"`（分 时 日 月 周） |
+| `-tz <timezone>` | 本地时区 | 时区 ID（仅 `-at`/`-cron` 适用），如 `-tz "Asia/Shanghai"` |
+| **Hosts 更新** | | |
+| `-host <domain> [N]` | - | 要更新/添加的域名（支持通配符 `*.b.com`），可多次指定；`N` 为可选排名（默认第 1 名），如 `-host a.com -host b.com 2` |
+| `-hosts-file <path>` | 系统默认 | 自定义 hosts 文件路径（默认 Windows: `C:\Windows\System32\drivers\etc\hosts`，Linux/macOS: `/etc/hosts`） |
+| `-hosts-dry-run` | false | 仅输出待写入内容，不实际写入 hosts 文件 |
 | **进度输出** | | |
-| `-progress` | false | 启用结构化进度行；每条以 `PROGRESS:{json}` 输出到 stdout，供父进程/GUI 解析实时进度。消息类型：`init` `ping` `ping_done` `speed` `speed_done` `output` `done` `error` `schedule_wait` |
+| `-progress` | false | 启用结构化进度行；每条以 `PROGRESS:{json}` 格式输出到 stdout，供父进程/GUI 解析实时进度。消息类型：`init` `ping` `ping_done` `speed` `speed_done` `output` `done` `error` `schedule_wait` |
 
 ## 自行打包
 
@@ -248,16 +246,18 @@ dotnet build
 
 ```powershell
 # Windows
-.\build\build.ps1
-.\build\build.ps1 win-x64
-.\build\build.ps1 -fd           # 依赖框架版，体积小，需本机安装 .NET 8
+.\build.ps1
+.\build.ps1 win-x64
+.\build.ps1 -fd           # 依赖框架版，体积小，需本机安装 .NET 8
+.\build.ps1 -aot          # NativeAOT，自动限定为当前平台
+.\build.ps1 -unity        # Unity DLL (netstandard2.1)
 ```
 
 ```bash
 # Linux / macOS
-./build/build.sh
-./build/build.sh win-x64
-./build/build.sh -fd
+./build.sh
+./build.sh win-x64
+./build.sh -fd
 ```
 
 输出在 `publish/` 目录下。
