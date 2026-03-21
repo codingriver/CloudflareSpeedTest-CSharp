@@ -1,4 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Text;
+using System.IO;
 using CloudflareST;
 
 namespace CloudflareST
@@ -334,6 +340,11 @@ public static class CfstRunner
             }
             Console.Out.Flush();
         }
+        if (config.HostEntries.Count > 0 && finalResults.Count > 0)
+        {
+            var log = (config.HostsDryRun || !config.Silent) ? (Action<string>)CfstRunner.WriteLineLog : null;
+            HostsUpdater.Update(config, finalResults, log);
+        }              
         ProgressReporter.ReportOutput(config, outputResults.Count, totalStages,
             config.HostEntries.Count > 0 && outputResults.Count > 0, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         return finalResults;

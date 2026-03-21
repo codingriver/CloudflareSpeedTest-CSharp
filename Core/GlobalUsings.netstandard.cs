@@ -1,15 +1,15 @@
-// 此文件仅在 netstandard2.1 目标下编译（见 csproj 条件配置）
-// 使用 global using 补回其他文件所需的命名空间（C# 10 语法，LangVersion=10 支持）
-global using System;
-global using System.Collections.Generic;
-global using System.IO;
-global using System.Linq;
-global using System.Net;
-global using System.Net.Http;
-global using System.Net.Security;
-global using System.Net.Sockets;
-global using System.Runtime.InteropServices;
-global using System.Text;
-global using System.Text.RegularExpressions;
-global using System.Threading;
-global using System.Threading.Tasks;
+// 兼容 Unity C# 9：不使用 global using（C#10 特性）
+// 此文件仅作为占位，避免 netstandard 条件编译时文件缺失。
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
