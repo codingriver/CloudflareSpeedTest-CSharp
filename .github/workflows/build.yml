@@ -85,7 +85,7 @@ jobs:
       - name: Publish ${{ matrix.out }} [AOT${{ matrix.upx == true && '+UPX' || '' }}]
         shell: bash
         run: |
-          dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -c Release \
+          dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -f net8.0 -c Release \
             -p:PublishAot=true \
             -p:StripSymbols=true \
             -o publish/tmp/${{ matrix.out }}
