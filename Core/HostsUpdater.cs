@@ -22,6 +22,7 @@ public static class HostsUpdater
 
     public static bool Update(Config config, IReadOnlyList<IPInfo> results, Action<string>? log = null)
     {
+        var effectiveLog = log ?? CfstRunner.WriteLineLog;
         if (results.Count == 0) { log?.Invoke("no results"); return false; }
         if (config.HostEntries.Count == 0) { log?.Invoke("no -host entries"); return false; }
         var path = GetHostsPath(config);
@@ -59,31 +60,108 @@ public static class HostsUpdater
             log?.Invoke(newContent);
             return true;
         }
+
+        // ── macOS 权限组件路径 ────────────────────────────────────────────────
+#if (UNITY_STANDALONE_OSX && !UNITY_EDITOR) || (UNITY_EDITOR_OSX && MAC_HELPER_IN_EDITOR)
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && OnMacHostsUpdate != null)
+        {
+            log?.Invoke("[Hosts] macOS 将优先通过权限组件执行高权限写入");
+            string helperError = null;
+            bool helperOk = false;
+            try { helperOk = OnMacHostsUpdate(path, newContent, log, out helperError); } catch { }
+            if (helperOk)
+            {
+                if (allUpdated.Count > 0) log?.Invoke($"[Hosts] 已更新: {string.Join(", ", allUpdated)}");
+                if (allAdded.Count > 0) log?.Invoke($"[Hosts] 已新增: {string.Join(", ", allAdded)}");
+                log?.Invoke($"[Hosts] 权限组件写入成功: {path}");
+                TryShowHostsToast("Hosts 更新成功", "权限组件已完成写入");
+                SetHostsWriteResult(success: true, permissionDenied: false);
+                return true;
+            }
+            log?.Invoke("[Hosts] 权限组件写入失败: " + helperError);
+            TryShowHostsToast("Hosts 更新失败", helperError ?? "权限组件不可用");
+            SetHostsWriteResult(success: false, permissionDenied: false);
+            return false;
+        }
+#endif
+        // ── 通用写入路径 ─────────────────────────────────────────────────────────
         try
         {
             File.WriteAllText(path, newContent);
             if (allUpdated.Count > 0) log?.Invoke($"[Hosts] 已更新: {string.Join(", ", allUpdated)}");
             if (allAdded.Count > 0) log?.Invoke($"[Hosts] 已新增: {string.Join(", ", allAdded)}");
             log?.Invoke($"[Hosts] 更新成功: {path}");
+            TryShowHostsToast("Hosts 更新成功", Path.GetFileName(path) + " 已写入");
+            SetHostsWriteResult(success: true, permissionDenied: false);
             return true;
         }
         catch (UnauthorizedAccessException)
         {
+            log?.Invoke($"[Hosts] 普通写入权限不足，尝试按操作临时提权: {path}");
+
+            bool privileged = false;
+        if (OnPrivilegedWrite != null)
+        {
+            try { privileged = OnPrivilegedWrite(path, newContent, effectiveLog); } catch { }
+        }
+            if (privileged)
+            {
+                if (allUpdated.Count > 0) log?.Invoke($"[Hosts] 已更新: {string.Join(", ", allUpdated)}");
+                if (allAdded.Count > 0) log?.Invoke($"[Hosts] 已新增: {string.Join(", ", allAdded)}");
+                log?.Invoke($"[Hosts] 提权写入成功: {path}");
+                TryShowHostsToast("Hosts 提权写入成功", Path.GetFileName(path) + " 已更新");
+                SetHostsWriteResult(success: true, permissionDenied: false);
+                return true;
+            }
+
             var pendingDir = Path.GetDirectoryName(config.OutputFile);
-            if (string.IsNullOrWhiteSpace(pendingDir)) pendingDir = Environment.CurrentDirectory;
+            if (string.IsNullOrWhiteSpace(pendingDir))
+                pendingDir = GetDesktopDataDirFunc?.Invoke() ?? Path.GetTempPath();
             Directory.CreateDirectory(pendingDir);
             var pendingPath = Path.Combine(pendingDir, "hosts-pending.txt");
 
-            var msg = $"[Hosts] 更新失败: 无写入权限，内容已保存到 {pendingPath}（请手动合并到 {path}）";
+            var msg = $"[Hosts] 更新失败: 无写入权限且提权未完成，内容已保存到 {pendingPath}（请手动合并到 {path}）";
             if (log != null) log(msg); else CfstRunner.WriteLineLog(msg);
             File.WriteAllText(pendingPath, newContent);
+            TryShowHostsToast("Hosts 更新失败", "权限不足，已输出 hosts-pending.txt");
+            SetHostsWriteResult(success: false, permissionDenied: true);
             return false;
         }
         catch (Exception ex)
         {
             log?.Invoke($"[Hosts] 更新失败: {ex.Message}");
+            TryShowHostsToast("Hosts 更新失败", ex.Message);
+            SetHostsWriteResult(success: false, permissionDenied: false);
             return false;
         }
+    }
+
+    // ── 静态委托（由宿主程序集注入，解耦跨程序集依赖）────────────────────────
+
+    /// <summary>macOS 权限组件写入回调。签名：(path, content, log, out error) => bool</summary>
+    public static MacHostsUpdateDelegate? OnMacHostsUpdate;
+    public delegate bool MacHostsUpdateDelegate(string path, string content, Action<string> log, out string error);
+
+    /// <summary>Windows 提权写入回调。签名：(path, content, log) => bool</summary>
+    public static Func<string, string, Action<string>, bool>? OnPrivilegedWrite;
+
+    /// <summary>获取桌面数据目录的回调（兜底 pending 目录）</summary>
+    public static Func<string>? GetDesktopDataDirFunc;
+
+    /// <summary>显示系统通知的回调</summary>
+    public static Action<string, string>? OnShowToast;
+
+    /// <summary>写入结果回调（ok, permissionDenied）</summary>
+    public static Action<bool, bool>? OnHostsWriteResult;
+
+    private static void SetHostsWriteResult(bool success, bool permissionDenied)
+    {
+        try { OnHostsWriteResult?.Invoke(success, permissionDenied); } catch { }
+    }
+
+    private static void TryShowHostsToast(string title, string message)
+    {
+        try { OnShowToast?.Invoke(title, message); } catch { }
     }
 
     private static List<(string Pattern, bool IsWildcard)> ParseHostsPatterns(string domains)

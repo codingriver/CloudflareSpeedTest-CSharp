@@ -55,10 +55,6 @@
     <Compile Remove="Program.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Cronos" Version="0.8.4" />
-  </ItemGroup>
-
   <!-- netstandard2.1 下补充 .NET 5+ 内置但 netstandard2.1 缺失的包 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
     <PackageReference Include="System.Text.Json" Version="8.0.5" />

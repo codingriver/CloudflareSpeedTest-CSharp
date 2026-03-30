@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
 using System.IO;
+using System.Diagnostics;
 using CloudflareST;
 
 namespace CloudflareST
@@ -69,6 +70,7 @@ public static class CfstRunner
     public static async Task<int> RunCliAsync(string[] args)
     {
         var config = ParseArgs(args);
+        NormalizeConfig(config);
 
         if (!string.IsNullOrEmpty(config.OutputDir))
         {
@@ -86,16 +88,36 @@ public static class CfstRunner
             }
         }
 
-        var scheduleMode = Scheduler.GetMode(config);
+        SchedulePlan schedulePlan;
+        try
+        {
+            schedulePlan = Scheduler.CreatePlan(config, DateTimeOffset.Now);
+        }
+        catch (ArgumentException ex)
+        {
+            ProgressReporter.ReportError(config, "INVALID_ARGUMENT", ex.Message, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            WriteErrorLine(ex.Message);
+            return 1;
+        }
 
-        var scheduleParams = new List<string?> { config.CronExpression, config.AtTimes, config.IntervalMinutes > 0 ? "interval" : null }
+        var scheduleMode = schedulePlan.Mode;
+
+        var scheduleParams = new List<string?> { config.AtTimes, config.IntervalMinutes > 0 ? "interval" : null }
             .Where(x => !string.IsNullOrEmpty(x))
             .ToList();
         if (scheduleParams.Count > 1 && !config.Silent)
-            Log($"提示: 同时指定了多个调度参数，将使用 -cron > -at > -interval 优先级，当前采用 {scheduleMode} 模式。");
+            Log($"提示: 同时指定了多个调度参数，将使用 -at > -interval 优先级，当前采用 {scheduleMode} 模式。");
 
         var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+        using var instanceLock = TryAcquireProcessLock();
+        if (instanceLock == null)
+        {
+            const string message = "检测到已有运行中的 cfst 实例，已取消本次启动。";
+            ProgressReporter.ReportError(config, "ALREADY_RUNNING", message, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            WriteErrorLine(message);
+            return 1;
+        }
 
         if (!config.Silent)
         {
@@ -119,12 +141,6 @@ public static class CfstRunner
                 if (finalResults == null)
                     return 1;
 
-                if (config.HostEntries.Count > 0 && finalResults.Count > 0)
-                {
-                    var log = (config.HostsDryRun || !config.Silent) ? (Action<string>)CfstRunner.WriteLineLog : null;
-                    HostsUpdater.Update(config, finalResults, log);
-                }
-
                 var limit = config.OutputNum <= 0 ? 10 : config.OutputNum;
                 var outputResults = finalResults.Take(limit).ToList();
                 var totalStages = config.DisableSpeedTest ? 4 : 5;
@@ -143,14 +159,19 @@ public static class CfstRunner
                 if (scheduleMode == ScheduleMode.None)
                     break;
 
+                var nextRunTime = schedulePlan.GetNextRunTime(DateTimeOffset.Now);
+                if (nextRunTime == null)
+                    break;
+                var nextRunText = schedulePlan.FormatRunTime(nextRunTime.Value);
+
                 if (!config.Silent)
-                    Log($"下次执行: {scheduleMode} 模式，等待中... (Ctrl+C 退出)");
+                    Log($"下次执行: {nextRunText} ({scheduleMode})，等待中... (Ctrl+C 退出)");
 
                 ProgressReporter.ReportScheduleWait(config,
-                    nextRunTime: "",
+                    nextRunTime: nextRunText,
                     ts: DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
-                var ok = await Scheduler.WaitUntilNextAsync(config, scheduleMode, cts.Token);
+                var ok = await schedulePlan.WaitUntilAsync(nextRunTime.Value, cts.Token);
                 if (!ok) break;
 
                 if (!config.Silent)
@@ -221,7 +242,7 @@ public static class CfstRunner
         if (ips.Count == 0)
         {
             ProgressReporter.ReportError(config, "NO_IPS", "No IPs to test", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            if (config.Silent) File.WriteAllText(config.OnlyIpFile, "");
+            if (config.Silent) File.WriteAllText(config.OnlyIpFile!, "");
             else Log("No IPs available.");
             return null;
         }
@@ -340,13 +361,14 @@ public static class CfstRunner
             }
             Console.Out.Flush();
         }
+        var hostsUpdated = false;
         if (config.HostEntries.Count > 0 && finalResults.Count > 0)
         {
             var log = (config.HostsDryRun || !config.Silent) ? (Action<string>)CfstRunner.WriteLineLog : null;
-            HostsUpdater.Update(config, finalResults, log);
-        }              
+            hostsUpdated = HostsUpdater.Update(config, finalResults, log);
+        }
         ProgressReporter.ReportOutput(config, outputResults.Count, totalStages,
-            config.HostEntries.Count > 0 && outputResults.Count > 0, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            hostsUpdated, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         return finalResults;
     }
 
@@ -374,7 +396,6 @@ public static class CfstRunner
             Silent = GetBool("-silent") || GetBool("-q"),
             OnlyIpFile = GetArg(args, "-onlyip"), OutputDir = GetArg(args, "-outputdir"),
             IntervalMinutes = GetInt("-interval", 0), AtTimes = GetArg(args, "-at"),
-            CronExpression = GetArg(args, "-cron"), TimeZoneId = GetArg(args, "-tz"),
             HostEntries = ParseHostEntries(args), HostsFilePath = GetArg(args, "-hosts-file"),
             HostsDryRun = GetBool("-hosts-dry-run"), ShowProgress = GetBool("-progress"),
             CdnProxy = GetArg(args, "-cdnproxy"),
@@ -383,8 +404,14 @@ public static class CfstRunner
 
     private static void WriteOnlyIp(Config cfg, IReadOnlyList<IPInfo> results)
     {
-        File.WriteAllText(cfg.OnlyIpFile,
+        File.WriteAllText(cfg.OnlyIpFile!,
             results.Count > 0 ? string.Join("\n", results.Select(r => r.IP.ToString())) : "");
+    }
+
+    private static void NormalizeConfig(Config config)
+    {
+        if (config.Silent && string.IsNullOrWhiteSpace(config.OnlyIpFile))
+            config.OnlyIpFile = "onlyip.txt";
     }
 
     private static List<string> ParseIpFiles(string[] args)
@@ -440,6 +467,32 @@ public static class CfstRunner
         if (LogHandler != null) LogHandler(str);
         else
             Console.WriteLine(str);
-    }    
+    }
+
+    private static void WriteErrorLine(string message)
+    {
+        if (LogHandler != null) LogHandler(message);
+        else Console.Error.WriteLine(message);
+    }
+
+    private static FileStream? TryAcquireProcessLock()
+    {
+        var lockPath = Path.Combine(Path.GetTempPath(), "cfst.lock");
+        try
+        {
+            var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            stream.SetLength(0);
+            using var writer = new StreamWriter(stream, Encoding.UTF8, bufferSize: 1024, leaveOpen: true);
+            writer.WriteLine($"pid={Process.GetCurrentProcess().Id}");
+            writer.WriteLine($"startedAt={DateTimeOffset.Now:O}");
+            writer.Flush();
+            stream.Flush(true);
+            return stream;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
 }
 }

@@ -58,8 +58,31 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
 PUBLISH_BASE="$PROJECT_ROOT/publish"
+
+DOTNET_BIN="$HOME/.dotnet/dotnet"
+if [[ ! -x "$DOTNET_BIN" ]]; then
+    DOTNET_BIN="$(command -v dotnet || true)"
+fi
+
+if [[ -z "$DOTNET_BIN" || ! -x "$DOTNET_BIN" ]]; then
+    echo "[错误] 未找到 dotnet。请先使用微软官方方式安装 .NET 8 SDK。"
+    echo "        示例: curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 --install-dir \"$HOME/.dotnet\""
+    exit 1
+fi
+
+export DOTNET_ROOT="$(cd "$(dirname "$DOTNET_BIN")" && pwd)"
+case ":$PATH:" in
+    *":$DOTNET_ROOT:"*) ;;
+    *) export PATH="$DOTNET_ROOT:$PATH" ;;
+esac
+
+if ! "$DOTNET_BIN" --list-sdks | awk '{print $1}' | grep -q '^8\.'; then
+    echo "[错误] 当前 dotnet 不包含 .NET 8 SDK: $DOTNET_BIN"
+    echo "        请先安装 .NET 8 SDK，或确认 ~/.dotnet/dotnet 可用。"
+    exit 1
+fi
 
 fd=false
 aot=false
@@ -96,25 +119,22 @@ publish_rid() {
     echo "==> $desc ($rid) [$mode$upx_note]"
 
     if [[ "$aot" == true ]]; then
-        dotnet publish -r "$rid" -c Release \
+        "$DOTNET_BIN" publish "$PROJECT_ROOT/CloudflareST.csproj" -r "$rid" -f net8.0 -c Release \
             -p:PublishAot=true \
             -p:StripSymbols=true \
-            -o "$out_dir" \
-            "$PROJECT_ROOT"
+            -o "$out_dir"
     elif [[ "$fd" == true ]]; then
-        dotnet publish -r "$rid" -c Release --self-contained false \
+        "$DOTNET_BIN" publish "$PROJECT_ROOT/CloudflareST.csproj" -r "$rid" -f net8.0 -c Release --self-contained false \
             -p:PublishSingleFile=true \
             -p:PublishTrimmed=false \
             -p:EnableCompressionInSingleFile=false \
-            -o "$out_dir" \
-            "$PROJECT_ROOT"
+            -o "$out_dir"
     else
-        dotnet publish -r "$rid" -c Release --self-contained true \
+        "$DOTNET_BIN" publish "$PROJECT_ROOT/CloudflareST.csproj" -r "$rid" -f net8.0 -c Release --self-contained true \
             -p:PublishSingleFile=true \
             -p:PublishTrimmed=true \
             -p:EnableCompressionInSingleFile=true \
-            -o "$out_dir" \
-            "$PROJECT_ROOT"
+            -o "$out_dir"
     fi
 
     local exe_path="$out_dir/$exe"

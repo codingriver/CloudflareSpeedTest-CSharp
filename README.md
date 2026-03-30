@@ -123,17 +123,11 @@ chmod +x cfst-macos-x64    # 或 cfst-macos-arm64
 ### 定时调度
 
 ```bash
-# 每 6 小时执行一次
+# 每 6 小时按固定计划点执行一次（错过的周期不补跑）
 ./cfst -interval 360 -silent -dd
 
-# 每天 6:00、12:00、18:00 执行
+# 每天 6:00、12:00、18:00 按系统本地时区执行（错过的时段不补跑）
 ./cfst -at "6:00,12:00,18:00" -silent
-
-# Cron 表达式：每 6 小时整点
-./cfst -cron "0 */6 * * *" -silent -dd
-
-# Cron：每周一 0:00
-./cfst -cron "0 0 * * 1" -silent
 ```
 
 ### Hosts 自动更新
@@ -157,10 +151,6 @@ chmod +x cfst-macos-x64    # 或 cfst-macos-arm64
 # HTTPing 测速，每天早上 6 点执行，更新 hosts
 ./cfst -httping -at "6:00" -host "a.b.com" -host "c.b.com" -silent
 
-# TCPing 测速，每周一早上 5:30 执行，更新 hosts（Cron 格式：分 时 日 月 周）
-# *.d.com代表是更新hosts中匹配到d.com的域名，如果没有则不更新也不写入新的，可以手动先加好在用这个
-./cfst -tcping -cron "30 5 * * 1" -host "*.d.com" -silent 
-
 # HTTPing 测速，每天 6:00 和 18:00，多域名 hosts
 ./cfst -httping -at "6:00,18:00" -host "cdn.example.com" -host "api.example.com" -host "*.example.com"
 ```
@@ -179,7 +169,7 @@ chmod +x cfst-macos-x64    # 或 cfst-macos-arm64
 - **地区码**：支持 Cloudflare、AWS、Fastly、CDN77、Bunny、Gcore
 - **IP 列表**：缺 `ip.txt` 时自动从 CloudflareIP-Sync 下载
 - **CSV 导出**：含地区码、地区中文名
-- **定时调度**：支持 `-interval` 间隔、`-at` 每日定点、`-cron` Cron 表达式
+- **定时调度**：支持 `-interval` 固定间隔、`-at` 每日定点（均跳过错过的触发点，不补跑）
 - **Hosts 更新**：`-hosts "a.com,*.b.com"` 自动更新/添加 hosts 条目
 
 ## 环境
@@ -229,10 +219,8 @@ dotnet build
 | `-debug` | false | 调试输出 |
 | `-silent` / `-q` | false | 静默模式：只输出 IP，每行一个，适合脚本/管道调用 |
 | **定时调度** | | |
-| `-interval <min>` | 0 | 间隔分钟数，>0 时每 N 分钟循环执行一次 |
-| `-at <times>` | - | 每日定点执行，如 `-at "6:00,18:00"` |
-| `-cron <expr>` | - | Cron 表达式，如 `-cron "0 */6 * * *"`（分 时 日 月 周） |
-| `-tz <timezone>` | 本地时区 | 时区 ID（仅 `-at`/`-cron` 适用），如 `-tz "Asia/Shanghai"` |
+| `-interval <min>` | 0 | 间隔分钟数，>0 时按固定计划点每 N 分钟执行一次；若上一轮尚未结束，则跳过已错过的周期，不补跑 |
+| `-at <times>` | - | 每日定点执行，如 `-at "6:00,18:00"`；使用系统本地时区，若错过某个时段则直接跳到下一个时段，不补跑 |
 | **Hosts 更新** | | |
 | `-host <domain> [N]` | - | 要更新/添加的域名（支持通配符 `*.b.com`），可多次指定；`N` 为可选排名（默认第 1 名），如 `-host a.com -host b.com 2` |
 | `-hosts-file <path>` | 系统默认 | 自定义 hosts 文件路径（默认 Windows: `C:\Windows\System32\drivers\etc\hosts`，Linux/macOS: `/etc/hosts`） |
@@ -277,7 +265,7 @@ CloudflareSeedTest-CSharp/
 ├── ColoProvider.cs  # CDN 地区码解析
 ├── SpeedTester.cs   # HTTP 下载测速
 ├── OutputWriter.cs  # 结果输出
-├── Scheduler.cs     # 定时调度（interval/at/cron）
+├── Scheduler.cs     # 定时调度（interval/at）
 ├── HostsUpdater.cs # Hosts 更新
 ├── build/          # 打包脚本
 └── docs/           # 使用文档

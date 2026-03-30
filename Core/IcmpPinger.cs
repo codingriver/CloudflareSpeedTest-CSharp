@@ -16,7 +16,7 @@ public static class IcmpPinger
 {
     /// <summary>
     /// OS 权限预检：向 127.0.0.1 发一次 ICMP，返回是否有发包权限。
-    /// 主要针对 Linux 容器（非 root 无 CAP_NET_RAW 时 SendPingAsync 会抛 SocketException）。
+    /// 主要针对 Linux 容器（非特权账户无 CAP_NET_RAW 时 SendPingAsync 会抛 SocketException）。
     /// </summary>
     public static async Task<bool> CheckIcmpAvailableAsync()
     {

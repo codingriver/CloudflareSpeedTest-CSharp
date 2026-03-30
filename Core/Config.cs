@@ -48,10 +48,8 @@ public class Config
     public bool Silent { get; set; } = false;  // -silent/-q 静默模式：仅输出 IP，出错或 0 结果时输出空并写 onlyip.txt
 
     // 定时调度
-    public int IntervalMinutes { get; set; } = 0;   // >0 时每 N 分钟执行一次
-    public string? AtTimes { get; set; }           // 每日定点，如 "6:00,18:00"
-    public string? CronExpression { get; set; }     // Cron 表达式
-    public string? TimeZoneId { get; set; }        // 时区，默认本地
+    public int IntervalMinutes { get; set; } = 0;   // >0 时每 N 分钟按固定计划点执行一次
+    public string? AtTimes { get; set; }           // 每日定点，如 "6:00,18:00"（使用系统本地时区）
 
     // Hosts 更新
     public List<HostEntry> HostEntries { get; set; } = new List<HostEntry>();  // -host 参数列表

@@ -45,8 +45,8 @@
 #                     sudo apk add upx            # Alpine
 #
 # -unity  构建 Unity 兼容 DLL（netstandard2.1 目标）
-#         输出: publish/cfst.dll + publish/Cronos.dll
-#         将这两个文件放入 Unity 项目的 Assets/Plugins/ 目录
+#         输出: publish/cfst.dll
+#         将该文件放入 Unity 项目的 Assets/Plugins/ 目录
 #         可与 -clean 组合使用，不可与 -fd/-aot/-upx 组合
 #         示例: .\build.ps1 -unity
 #
@@ -226,10 +226,9 @@ try {
             Write-Host "    [错误] Unity DLL 构建失败，已中止。" -ForegroundColor Red
             return
         }
-        # 收集 Unity 所需文件：主 DLL + Cronos.dll
+        # 收集 Unity 所需文件：主 DLL
         $dllFiles = @(
-            (Join-Path $UnityOutDir 'cfst.dll'),
-            (Join-Path $UnityOutDir 'Cronos.dll')
+            (Join-Path $UnityOutDir 'cfst.dll')
         )
         foreach ($dll in $dllFiles) {
             if (Test-Path $dll) {
@@ -242,7 +241,6 @@ try {
         Write-Host "`n[Unity 使用说明]" -ForegroundColor Yellow
         Write-Host "  将以下文件复制到 Unity 项目的 Assets/Plugins/ 目录：" -ForegroundColor Yellow
         Write-Host "    cfst.dll      -- 本项目主库" -ForegroundColor Yellow
-        Write-Host "    Cronos.dll    -- 定时调度依赖（如不使用 -cron 参数可跳过）" -ForegroundColor Yellow
     }
 } finally {
     Pop-Location
