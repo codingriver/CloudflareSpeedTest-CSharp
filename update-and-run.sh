@@ -18,6 +18,11 @@ CDN_MIRRORS=(
 DNS_API_URL="http://127.0.0.1:58080/api/dns.php"
 IP_FILE="./onlyip.txt"
 
+# DNS 域名配置（子域名格式: jiasuN.域名）
+# ⚠️ 使用前请修改为自己的域名，将 YOUR_DOMAIN_HERE 替换为实际域名
+DNS_DOMAIN_SUFFIX="YOUR_DOMAIN_HERE"
+DNS_DOMAIN_PREFIX="jiasu"
+
 # 工作目录自动定位到脚本所在目录（计划任务执行时即为 data/tasks/）
 cd "$(cd "$(dirname "$0")" && pwd)"
 
@@ -296,6 +301,12 @@ process_and_update_dns() {
 echo "======================== start ========================"
 echo "工作目录: $(pwd)"
 echo ""
+
+# 校验 DNS 域名是否已配置
+if [ "$DNS_DOMAIN_SUFFIX" = "YOUR_DOMAIN_HERE" ]; then
+ echo "错误：请先在脚本配置区修改 DNS_DOMAIN_SUFFIX 为自己的域名" >&2
+ exit 1
+fi
 
 check_and_update_cfst
 CFST_FILE=$(get_cfst_filename)
