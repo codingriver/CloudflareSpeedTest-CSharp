@@ -29,7 +29,7 @@ jobs:
             os: ubuntu-latest
             upx: true
             out: cfst-linux-musl-x64-upx
-            container: "mcr.microsoft.com/dotnet/sdk:8.0-alpine"
+            container: ""
           - rid: linux-arm64
             exe: cfst
             os: ubuntu-24.04-arm
@@ -41,7 +41,7 @@ jobs:
             os: ubuntu-24.04-arm
             upx: true
             out: cfst-linux-musl-arm64-upx
-            container: "mcr.microsoft.com/dotnet/sdk:8.0-alpine"
+            container: ""
           # ---------- NativeAOT 无 UPX（~10 MB，杀软友好）----------
           - rid: win-x64
             exe: cfst.exe
@@ -60,7 +60,7 @@ jobs:
             os: ubuntu-latest
             upx: false
             out: cfst-linux-musl-x64
-            container: "mcr.microsoft.com/dotnet/sdk:8.0-alpine"
+            container: ""
           - rid: linux-arm64
             exe: cfst
             os: ubuntu-24.04-arm
@@ -72,7 +72,7 @@ jobs:
             os: ubuntu-24.04-arm
             upx: false
             out: cfst-linux-musl-arm64
-            container: "mcr.microsoft.com/dotnet/sdk:8.0-alpine"
+            container: ""
           - rid: osx-x64
             exe: cfst
             os: macos-15
@@ -113,8 +113,26 @@ jobs:
 
       # Linux upx 已预装，无需安装
 
-      # 构建 NativeAOT（输出到临时目录避免与最终文件名冲突）
+      # musl 版本：用 docker run 在 Alpine 容器中构建（绕过 GitHub Actions JS actions 与 musl 不兼容问题）
+      - name: Publish ${{ matrix.out }} [AOT${{ matrix.upx == true && '+UPX' || '' }}] (musl)
+        if: contains(matrix.rid, 'musl')
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src \
+            mcr.microsoft.com/dotnet/sdk:8.0-alpine \
+            sh -c "
+              apk add --no-cache build-base clang zlib-dev upx
+              dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -f net8.0 -c Release \
+                -p:PublishAot=true \
+                -p:StripSymbols=true \
+                -o /src/publish/tmp/${{ matrix.out }}
+              $([ '${{ matrix.upx }}' = 'true' ] && upx --best --lzma /src/publish/tmp/${{ matrix.out }}/${{ matrix.exe }} || echo 'UPX skipped')
+            "
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+      # glibc 版本：直接在 runner 上构建
       - name: Publish ${{ matrix.out }} [AOT${{ matrix.upx == true && '+UPX' || '' }}]
+        if: '!contains(matrix.rid, ''musl'')'
         shell: bash
         run: |
           dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -f net8.0 -c Release \
@@ -124,9 +142,9 @@ jobs:
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
-      # UPX 压缩（仅 upx=true）
+      # UPX 压缩（仅 upx=true 且非 musl；musl 版本已在容器内完成）
       - name: UPX compress ${{ matrix.out }}
-        if: matrix.upx == true
+        if: matrix.upx == true && !contains(matrix.rid, 'musl')
         shell: bash
         run: |
           exe_path="publish/tmp/${{ matrix.out }}/${{ matrix.exe }}"
