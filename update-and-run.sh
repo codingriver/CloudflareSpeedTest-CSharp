@@ -311,7 +311,3 @@ run_cfst "$CFST_FILE"
 process_and_update_dns
 
 echo "======================== end ========================"
-ST_FILE"
-process_and_update_dns
-
-echo "======================== end ========================"
