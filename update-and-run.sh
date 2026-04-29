@@ -25,18 +25,19 @@ cd "$(cd "$(dirname "$0")" && pwd)"
 
 # 检测当前系统是否使用 musl libc
 is_musl() {
- # 方法1：检查 musl 动态链接器
+ # 优先确认 glibc — 大多数 Linux 都是 glibc
+ if ldd --version 2>&1 | grep -qiE 'gnu libc|glibc'; then
+ return 1
+ fi
+ # 明确检测到 musl 动态链接器
  if ls /lib/ld-musl-* &>/dev/null; then
  return 0
  fi
- # 方法2：检查 ldd 版本输出
+ # ldd 版本明确提到 musl
  if ldd --version 2>&1 | grep -qi musl; then
  return 0
  fi
- # 方法3：检查 getconf 是否不返回 glibc 版本
- if ! getconf GNU_LIBC_VERSION &>/dev/null; then
- return 0
- fi
+ # 默认保守假设为 glibc（避免误判）
  return 1
 }
 
@@ -60,8 +61,33 @@ get_cfst_filename() {
  case "$arch" in
  x86_64|amd64) echo "cfst-linux${libc_suffix}-x64-upx" ;;
  aarch64|arm64|armv8l) echo "cfst-linux${libc_suffix}-arm64-upx" ;;
- # 32位 ARM 回退到 arm64（现代系统通常兼容）或提示不支持
  armv7l|armv6l) echo "cfst-linux${libc_suffix}-arm64-upx" ;;
+ *) echo "不支持架构: $arch" >&2; exit 1 ;;
+ esac
+ ;;
+ darwin)
+ case "$arch" in
+ x86_64|amd64) echo "cfst-macos-x64" ;;
+ aarch64|arm64) echo "cfst-macos-arm64" ;;
+ *) echo "不支持架构: $arch" >&2; exit 1 ;;
+ esac
+ ;;
+ *) echo "不支持系统: $os" >&2; exit 1 ;;
+ esac
+}
+
+# 获取 fallback 文件名（旧版命名，用于兼容旧 Release）
+get_cfst_filename_fallback() {
+ local os arch
+ os=$(uname -s | tr '[:upper:]' '[:lower:]')
+ arch=$(uname -m)
+
+ case "$os" in
+ linux)
+ case "$arch" in
+ x86_64|amd64) echo "cfst-linux-x64-upx" ;;
+ aarch64|arm64|armv8l) echo "cfst-linux-arm64-upx" ;;
+ armv7l|armv6l) echo "cfst-linux-arm64-upx" ;;
  *) echo "不支持架构: $arch" >&2; exit 1 ;;
  esac
  ;;
@@ -134,6 +160,13 @@ download_cfst() {
  return 1
  fi
 
+ # 校验文件是否为有效 ELF 可执行文件（防止 CDN 返回 HTML 错误页面）
+ if ! file "$filename" | grep -qiE 'elf|executable|mach-o'; then
+ echo "错误：下载的文件不是有效的可执行文件（可能 CDN 返回了错误页面）" >&2
+ rm -f "$filename"
+ return 1
+ fi
+
  chmod +x "$filename"
  echo " ✓ 已设置可执行权限"
  return 0
@@ -141,7 +174,9 @@ download_cfst() {
 
 check_and_update_cfst() {
  local filename latest localv need=0
+ local fallback_filename=""
  filename=$(get_cfst_filename)
+ fallback_filename=$(get_cfst_filename_fallback)
  echo "当前平台文件: $filename"
 
  echo "检查最新版本..."
@@ -156,10 +191,13 @@ check_and_update_cfst() {
  localv=$(get_local_version)
  echo " 本地版本: ${localv:-未记录}"
 
- if [ ! -f "$filename" ]; then
+ if [ ! -f "$filename" ] && [ ! -f "$fallback_filename" ]; then
  echo " 本地文件不存在，需要下载"
  need=1
- elif [ ! -x "$filename" ]; then
+ elif [ -f "$filename" ] && [ ! -x "$filename" ]; then
+ echo " 文件不可执行，需要重新下载"
+ need=1
+ elif [ -f "$fallback_filename" ] && [ ! -x "$fallback_filename" ]; then
  echo " 文件不可执行，需要重新下载"
  need=1
  elif [ -n "$localv" ] && [ "$localv" != "$latest" ] && [ "$latest" != "unknown" ]; then
@@ -174,16 +212,34 @@ check_and_update_cfst() {
 
  if [ $need -eq 1 ]; then
  if [ "$latest" = "unknown" ]; then
+ # 检查本地是否有任一版本可用
+ if [ -f "$filename" ] || [ -f "$fallback_filename" ]; then
+ echo " 无法获取远程版本，使用本地文件"
+ else
  echo "错误：无法获取版本且本地文件不存在" >&2
  exit 1
  fi
- [ -f "$filename" ] && cp "$filename" "${filename}.backup.$(date +%Y%m%d%H%M%S)" 2>/dev/null || true
+ else
+ # 先尝试新版名称下载
+ local downloaded=0
  if download_cfst "$filename" "$latest"; then
+ downloaded=1
+ # 清理可能存在的旧版 fallback 文件
+ rm -f "$fallback_filename"
+ else
+ echo " 新版产物不存在，尝试旧版命名..."
+ if download_cfst "$fallback_filename" "$latest"; then
+ downloaded=1
+ fi
+ fi
+
+ if [ $downloaded -eq 1 ]; then
  save_local_version "$latest"
  echo " ✓ 更新完成"
  else
  echo "错误：下载失败" >&2
  exit 1
+ fi
  fi
  fi
  echo ""
@@ -243,6 +299,14 @@ echo ""
 
 check_and_update_cfst
 CFST_FILE=$(get_cfst_filename)
+# 如果新版名称不存在但旧版 fallback 存在，使用旧版
+if [ ! -f "$CFST_FILE" ]; then
+ local fb
+ fb=$(get_cfst_filename_fallback)
+ if [ -f "$fb" ]; then
+ CFST_FILE="$fb"
+ fi
+fi
 run_cfst "$CFST_FILE"
 process_and_update_dns
 
