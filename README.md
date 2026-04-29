@@ -23,20 +23,31 @@
 
 ### Linux
 
-在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载 `cfst-linux-x64` 后执行：
+在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载对应版本：
+
+| 产物名称 | 适用场景 |
+|---------|---------|
+| `cfst-linux-glibc-x64` | **默认选择**。大多数 Linux 发行版（Ubuntu/Debian/CentOS/Fedora 等） |
+| `cfst-linux-musl-x64` | Alpine Linux、轻量容器、嵌入式系统 |
+| `cfst-linux-glibc-arm64` | ARM64 服务器（如 AWS Graviton、树莓派 64 位系统） |
+| `cfst-linux-musl-arm64` | ARM64 Alpine/容器环境 |
+| `-upx` 后缀 | 体积更小（~5 MB），但部分杀软可能误报 |
+| 无 `-upx` | 体积稍大（~10 MB），杀软友好 |
+
+**x64 示例：**
 
 ```bash
-chmod +x cfst-linux-x64
-./cfst-linux-x64
+chmod +x cfst-linux-glibc-x64
+./cfst-linux-glibc-x64
 ```
 
 **测速方式**：容器/非 root 环境通常无 ICMP 权限，程序会自动检测并切换 TCPing。
 
 ```bash
-./cfst-linux-x64          # ICMP Ping（默认，无权限时自动切换 TCPing）
-./cfst-linux-x64 -tcping  # 手动指定 TCPing
-./cfst-linux-x64 -httping # HTTPing
-./cfst-linux-x64 -icmp    # 强制 ICMP，禁止自动切换
+./cfst-linux-glibc-x64          # ICMP Ping（默认，无权限时自动切换 TCPing）
+./cfst-linux-glibc-x64 -tcping  # 手动指定 TCPing
+./cfst-linux-glibc-x64 -httping # HTTPing
+./cfst-linux-glibc-x64 -icmp    # 强制 ICMP，禁止自动切换
 ```
 
 ### macOS
