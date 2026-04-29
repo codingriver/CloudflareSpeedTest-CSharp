@@ -119,14 +119,18 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/src" -w /src \
             mcr.microsoft.com/dotnet/sdk:8.0-alpine \
-            sh -c "
+            sh -c '
               apk add --no-cache build-base clang zlib-dev upx
               dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -f net8.0 -c Release \
                 -p:PublishAot=true \
                 -p:StripSymbols=true \
                 -o /src/publish/tmp/${{ matrix.out }}
-              $([ '${{ matrix.upx }}' = 'true' ] && upx --best --lzma /src/publish/tmp/${{ matrix.out }}/${{ matrix.exe }} || echo 'UPX skipped')
-            "
+              if [ "${{ matrix.upx }}" = "true" ]; then
+                upx --best --lzma /src/publish/tmp/${{ matrix.out }}/${{ matrix.exe }}
+              else
+                echo "UPX skipped"
+              fi
+            '
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
