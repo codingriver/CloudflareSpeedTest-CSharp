@@ -41,20 +41,27 @@ public static class IcmpPinger
         IProgress<(int Completed, int Qualified)>? progress = null,
         CancellationToken ct = default)
     {
-        var results = new System.Collections.Concurrent.ConcurrentBag<IPInfo>();
+        // 预分配结果数组，避免 ConcurrentBag 排序开销
+        var results = new IPInfo[ips.Count];
+        var resultCount = 0;
+        var resultLock = new object();
+
         var queue = new System.Collections.Concurrent.ConcurrentQueue<IPAddress>(ips);
         var semaphore = new SemaphoreSlim(config.PingThreads);
         var completed = 0;
 
-
         var workers = Enumerable.Range(0, config.PingThreads).Select(_ => Task.Run(async () =>
         {
+            // 每个 worker 复用一个 Ping 实例
+            using var ping = new Ping();
+
             while (queue.TryDequeue(out var ip))
             {
+                ct.ThrowIfCancellationRequested();
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, totalDelayMs, samples) = await IcmpPingAsync(ip, config.TimeoutMs, config.PingCount);
+                    var (received, totalDelayMs, samples) = await IcmpPingAsync(ping, ip, config.TimeoutMs, config.PingCount, ct);
                     var (jitter, minDelay, maxDelay) = IPInfo.CalcJitter(samples);
                     var info = new IPInfo
                     {
@@ -71,39 +78,49 @@ public static class IcmpPinger
                         info.DelayMs >= config.DelayMinMs &&
                         info.LossRate <= config.LossRateThreshold)
                     {
-                        results.Add(info);
+                        lock (resultLock)
+                        {
+                            results[resultCount++] = info;
+                        }
                     }
                 }
                 finally
                 {
                     semaphore.Release();
                     var c = Interlocked.Increment(ref completed);
-                    progress?.Report((c, results.Count));
+                    progress?.Report((c, resultCount));
                 }
             }
         }, ct));
 
         await Task.WhenAll(workers);
-        return results.OrderBy(x => x.LossRate).ThenBy(x => x.DelayMs).ToList();
+
+        // 只取有效结果排序，避免对空槽排序
+        var validResults = new List<IPInfo>(resultCount);
+        for (var i = 0; i < resultCount; i++)
+            validResults.Add(results[i]);
+
+        return validResults.OrderBy(x => x.LossRate).ThenBy(x => x.DelayMs).ToList();
     }
 
     /// <summary>
     /// 单 IP ICMP Ping，串行 pingTimes 次，取平均延迟
     /// </summary>
     public static async Task<(int received, double totalDelayMs, List<double> samples)> IcmpPingAsync(
+        Ping ping,
         IPAddress ip,
         int timeoutMs,
-        int pingTimes)
+        int pingTimes,
+        CancellationToken ct = default)
     {
         var received = 0;
         var totalDelayMs = 0.0;
         var samples = new List<double>(pingTimes);
 
-        using var ping = new Ping();
-
         for (var i = 0; i < pingTimes; i++)
         {
-            var rtt = await IcmpPingOnceAsync(ping, ip, timeoutMs);
+            ct.ThrowIfCancellationRequested();
+            var rtt = await IcmpPingOnceAsync(ping, ip, timeoutMs, ct);
             if (rtt.HasValue)
             {
                 received++;
@@ -118,13 +135,17 @@ public static class IcmpPinger
     /// <summary>
     /// 单次 ICMP Ping，成功返回 RTT(ms)，失败返回 null
     /// </summary>
-    public static async Task<double?> IcmpPingOnceAsync(Ping ping, IPAddress ip, int timeoutMs)
+    public static async Task<double?> IcmpPingOnceAsync(Ping ping, IPAddress ip, int timeoutMs, CancellationToken ct = default)
     {
         try
         {
             var reply = await ping.SendPingAsync(ip, timeoutMs);
             if (reply.Status == IPStatus.Success)
                 return reply.RoundtripTime;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {

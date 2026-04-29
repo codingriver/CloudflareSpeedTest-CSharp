@@ -31,11 +31,23 @@ public class IPInfo
         if (samples.Count == 0) return (0, 0, 0);
         if (samples.Count == 1) return (0, samples[0], samples[0]);
 
-        var min = samples.Min();
-        var max = samples.Max();
-        var avg = samples.Average();
-        var variance = samples.Average(x => (x - avg) * (x - avg)); // 总体标准差：除以 n
-        var jitter = Math.Sqrt(variance);
+        var min = double.MaxValue;
+        var max = double.MinValue;
+        var sum = 0.0;
+        foreach (var s in samples)
+        {
+            if (s < min) min = s;
+            if (s > max) max = s;
+            sum += s;
+        }
+        var avg = sum / samples.Count;
+        var varianceSum = 0.0;
+        foreach (var s in samples)
+        {
+            var diff = s - avg;
+            varianceSum += diff * diff;
+        }
+        var jitter = Math.Sqrt(varianceSum / samples.Count);
         return (jitter, min, max);
     }
 }

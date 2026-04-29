@@ -43,12 +43,9 @@ public static class SpeedTester
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (speedMbps, colo) = await DownloadSpeedAsync(info.IP, config.SpeedUrl, config.Port, config.DownloadTimeoutSeconds);
+                    var (speedMbps, colo) = await DownloadSpeedAsync(info.IP, config.SpeedUrl, config.Port, config.DownloadTimeoutSeconds, ct);
                     // 只记录测速结果，不在此阶段做过滤
-                    if (!string.IsNullOrEmpty(colo))
-                        speedMap[info.IP] = (speedMbps, colo);
-                    else
-                        speedMap[info.IP] = (speedMbps, info.Colo ?? "");
+                    speedMap[info.IP] = (speedMbps, string.IsNullOrEmpty(colo) ? info.Colo ?? "" : colo);
                 }
                 finally
                 {
@@ -132,13 +129,16 @@ public static class SpeedTester
         IPAddress ip,
         string url,
         int port,
-        int timeoutSec)
+        int timeoutSec,
+        CancellationToken ct = default)
     {
         try
         {
             var uri = new Uri(url);
             var host = uri.Host ?? uri.DnsSafeHost;
-            var targetPort = uri.Port > 0 ? uri.Port : port;
+            var targetPort = port;
+            if (uri.Port != 80 && uri.Port != 443)
+                targetPort = uri.Port;
 
 #if UNITY_BUILD
             // netstandard2.1: SocketsHttpHandler.ConnectCallback is .NET 5+ API
@@ -152,6 +152,7 @@ public static class SpeedTester
                 ConnectCallback = async (context, token) =>
                 {
                     var socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                    socket.NoDelay = true;
                     socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
                     try
                     {
@@ -179,7 +180,7 @@ public static class SpeedTester
 
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(timeoutSec + 5) };
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
 
             if (!response.IsSuccessStatusCode)
                 return (0, "");
@@ -187,23 +188,30 @@ public static class SpeedTester
             var colo = ColoProvider.GetColoFromHeaders(response.Headers) ?? "";
 
             await using var stream = await response.Content.ReadAsStreamAsync();
-            var buffer = new byte[81920];
-            var totalBytes = 0L;
-            var sw = Stopwatch.StartNew();
-            var timeEnd = sw.Elapsed.TotalSeconds + timeoutSec;
-
-            int read;
-            while ((read = await stream.ReadAsync(buffer, CancellationToken.None)) > 0)
+            var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(65536);
+            try
             {
-                totalBytes += read;
-                if (sw.Elapsed.TotalSeconds >= timeEnd)
-                    break;
-            }
+                var totalBytes = 0L;
+                var sw = Stopwatch.StartNew();
+                var deadline = TimeSpan.FromSeconds(timeoutSec);
 
-            sw.Stop();
-            var elapsedSec = Math.Max(sw.Elapsed.TotalSeconds, 0.001);
-            var speedMbps = (totalBytes * 8.0) / (elapsedSec * 1_000_000);
-            return (speedMbps, colo);
+                int read;
+                while ((read = await stream.ReadAsync(buffer.AsMemory(), ct)) > 0)
+                {
+                    totalBytes += read;
+                    if (sw.Elapsed >= deadline)
+                        break;
+                }
+
+                sw.Stop();
+                var elapsedSec = Math.Max(sw.Elapsed.TotalSeconds, 0.001);
+                var speedMbps = (totalBytes * 8.0) / (elapsedSec * 1_000_000);
+                return (speedMbps, colo);
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         catch
         {

@@ -67,15 +67,15 @@ public static class OutputWriter
     {
         if (string.IsNullOrEmpty(path)) return;
 
-        var lines = new List<string> { "IP,丢包率,平均延迟(ms),抖动(ms),最小延迟(ms),最大延迟(ms),下载速度(Mbps),地区码,地区" };
+        await using var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8);
+        await writer.WriteLineAsync("IP,丢包率,平均延迟(ms),抖动(ms),最小延迟(ms),最大延迟(ms),下载速度(Mbps),地区码,地区");
         foreach (var r in results)
         {
+            ct.ThrowIfCancellationRequested();
             var colo = string.IsNullOrEmpty(r.Colo) ? "N/A" : r.Colo;
             var coloZh = ColoProvider.GetColoNameZh(r.Colo);
-            lines.Add($"{r.IP},{r.LossRate:P2},{r.DelayMs:F0},{r.JitterMs:F1},{r.MinDelayMs:F0},{r.MaxDelayMs:F0},{r.DownloadSpeedMbps:F2},{colo},{coloZh}");
+            await writer.WriteLineAsync($"{r.IP},{r.LossRate:P2},{r.DelayMs:F0},{r.JitterMs:F1},{r.MinDelayMs:F0},{r.MaxDelayMs:F0},{r.DownloadSpeedMbps:F2},{colo},{coloZh}");
         }
-
-        await File.WriteAllLinesAsync(path, lines, ct);
     }
 }
 }

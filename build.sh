@@ -43,6 +43,9 @@
 #
 # -clean  清理 obj/bin/publish 目录（可与其他参数组合）
 #
+# === musl (Alpine) 前置依赖 ===
+#   musl-tools  musl-dev  (sudo apt install musl-tools musl-dev)
+#
 # === 示例 ===
 # ./build.sh                        # 全平台 自包含+Trim+内置压缩  ~25 MB
 # ./build.sh win-x64                # 仅 win-x64 自包含
@@ -50,6 +53,7 @@
 # ./build.sh win-x64 -fd            # 仅 win-x64 框架依赖
 # ./build.sh -aot                   # 全平台 NativeAOT  ~10 MB
 # ./build.sh linux-x64 -aot         # 仅 linux-x64 NativeAOT
+# ./build.sh linux-musl-x64 -aot    # 仅 Alpine x64 NativeAOT
 # ./build.sh -upx                   # 全平台 自包含 + UPX 二次压缩  ~12 MB
 # ./build.sh linux-x64 -aot -upx    # linux-x64 NativeAOT + UPX  ~5 MB（最小）
 # ./build.sh -clean                 # 仅清理
@@ -96,7 +100,7 @@ for arg in "$@"; do
     elif [[ "$arg" == "-aot" ]]; then aot=true
     elif [[ "$arg" == "-upx" ]]; then upx=true
     elif [[ "$arg" == "-clean" ]]; then clean=true
-    elif [[ "$arg" == "all" || "$arg" == "win-x64" || "$arg" == "linux-x64" || "$arg" == "linux-arm64" || "$arg" == "osx-x64" || "$arg" == "osx-arm64" ]]; then
+    elif [[ "$arg" == "all" || "$arg" == "win-x64" || "$arg" == "linux-x64" || "$arg" == "linux-musl-x64" || "$arg" == "linux-arm64" || "$arg" == "linux-musl-arm64" || "$arg" == "osx-x64" || "$arg" == "osx-arm64" ]]; then
         platform="$arg"
         platform_explicit=true
     fi
@@ -185,23 +189,27 @@ echo "CloudflareST build - Project: $PROJECT_ROOT [$mode$upx_note]"
 
 case "$platform" in
     all)
-        publish_rid "win-x64"    "Windows x64"                              "cfst.exe"
-        publish_rid "linux-x64"  "Linux x64"                                "cfst"
-        publish_rid "linux-arm64" "Linux ARM64 (Raspberry Pi 4/5, ARM servers)" "cfst"
-        publish_rid "osx-x64"    "macOS Intel (x64)"                        "cfst"
-        publish_rid "osx-arm64"  "macOS Apple Silicon"                      "cfst"
+        publish_rid "win-x64"         "Windows x64"                                 "cfst.exe"
+        publish_rid "linux-x64"       "Linux x64 (glibc)"                          "cfst"
+        publish_rid "linux-musl-x64"  "Alpine Linux x64 (musl)"                    "cfst"
+        publish_rid "linux-arm64"     "Linux ARM64 (glibc, RPi 4/5, ARM servers)"  "cfst"
+        publish_rid "linux-musl-arm64" "Alpine Linux ARM64 (musl, RPi 4/5)"        "cfst"
+        publish_rid "osx-x64"         "macOS Intel (x64)"                          "cfst"
+        publish_rid "osx-arm64"       "macOS Apple Silicon"                        "cfst"
         ;;
-    win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64)
+    win-x64|linux-x64|linux-musl-x64|linux-arm64|linux-musl-arm64|osx-x64|osx-arm64)
         case "$platform" in
-            win-x64)    publish_rid "win-x64"    "Windows x64"                              "cfst.exe" ;;
-            linux-x64)  publish_rid "linux-x64"  "Linux x64"                                "cfst" ;;
-            linux-arm64) publish_rid "linux-arm64" "Linux ARM64 (Raspberry Pi 4/5, ARM servers)" "cfst" ;;
-            osx-x64)    publish_rid "osx-x64"    "macOS Intel"                              "cfst" ;;
-            osx-arm64)  publish_rid "osx-arm64"  "macOS Apple Silicon"                     "cfst" ;;
+            win-x64)           publish_rid "win-x64"         "Windows x64"              "cfst.exe" ;;
+            linux-x64)         publish_rid "linux-x64"       "Linux x64 (glibc)"        "cfst" ;;
+            linux-musl-x64)    publish_rid "linux-musl-x64"  "Alpine Linux x64 (musl)"  "cfst" ;;
+            linux-arm64)       publish_rid "linux-arm64"     "Linux ARM64 (glibc)"      "cfst" ;;
+            linux-musl-arm64)  publish_rid "linux-musl-arm64" "Alpine Linux ARM64 (musl)" "cfst" ;;
+            osx-x64)           publish_rid "osx-x64"         "macOS Intel"              "cfst" ;;
+            osx-arm64)         publish_rid "osx-arm64"       "macOS Apple Silicon"      "cfst" ;;
         esac
         ;;
     *)
-        echo "Usage: $0 [all|win-x64|linux-x64|linux-arm64|osx-x64|osx-arm64] [-fd] [-aot] [-upx] [-clean]"
+        echo "Usage: $0 [all|win-x64|linux-x64|linux-musl-x64|linux-arm64|linux-musl-arm64|osx-x64|osx-arm64] [-fd] [-aot] [-upx] [-clean]"
         exit 1
         ;;
 esac

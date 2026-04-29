@@ -27,20 +27,24 @@ public static class HttpingTester
         IProgress<(int Completed, int Qualified)>? progress = null,
         CancellationToken ct = default)
     {
-        var results = new System.Collections.Concurrent.ConcurrentBag<IPInfo>();
+        // 预分配结果数组，避免 ConcurrentBag 排序开销
+        var results = new IPInfo[ips.Count];
+        var resultCount = 0;
+        var resultLock = new object();
+
         var queue = new System.Collections.Concurrent.ConcurrentQueue<IPAddress>(ips);
         var semaphore = new SemaphoreSlim(config.PingThreads);
         var completed = 0;
-
 
         var workers = Enumerable.Range(0, config.PingThreads).Select(_ => Task.Run(async () =>
         {
             while (queue.TryDequeue(out var ip))
             {
+                ct.ThrowIfCancellationRequested();
                 await semaphore.WaitAsync(ct);
                 try
                 {
-                    var (received, totalDelayMs, colo, samples) = await HttpingAsync(ip, config);
+                    var (received, totalDelayMs, colo, samples) = await HttpingAsync(ip, config, ct);
                     var (jitter, minDelay, maxDelay) = IPInfo.CalcJitter(samples);
                     var info = new IPInfo
                     {
@@ -58,26 +62,35 @@ public static class HttpingTester
                         info.DelayMs >= config.DelayMinMs &&
                         info.LossRate <= config.LossRateThreshold)
                     {
-                        results.Add(info);
+                        lock (resultLock)
+                        {
+                            results[resultCount++] = info;
+                        }
                     }
                 }
                 finally
                 {
                     semaphore.Release();
                     var c = Interlocked.Increment(ref completed);
-                    progress?.Report((c, results.Count));
+                    progress?.Report((c, resultCount));
                 }
             }
         }, ct));
 
         await Task.WhenAll(workers);
-        return results.OrderBy(x => x.LossRate).ThenBy(x => x.DelayMs).ToList();
+
+        // 只取有效结果排序，避免对空槽排序
+        var validResults = new List<IPInfo>(resultCount);
+        for (var i = 0; i < resultCount; i++)
+            validResults.Add(results[i]);
+
+        return validResults.OrderBy(x => x.LossRate).ThenBy(x => x.DelayMs).ToList();
     }
 
     /// <summary>
     /// 单 IP HTTPing：预检 + 循环测延迟
     /// </summary>
-    public static async Task<(int received, double totalDelayMs, string? colo, List<double> samples)> HttpingAsync(IPAddress ip, Config config)
+    public static async Task<(int received, double totalDelayMs, string? colo, List<double> samples)> HttpingAsync(IPAddress ip, Config config, CancellationToken ct = default)
     {
         var allowedColos = ColoProvider.ParseCfColo(config.CfColo);
 
@@ -85,7 +98,9 @@ public static class HttpingTester
         {
             var uri = new Uri(config.SpeedUrl);
             var host = uri.Host ?? uri.DnsSafeHost;
-            var targetPort = uri.Port > 0 ? uri.Port : config.Port;
+            var targetPort = config.Port;
+            if (uri.Port != 80 && uri.Port != 443)
+                targetPort = uri.Port;
 
             var handler = CreateHandler(ip, host, targetPort, uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase));
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(config.HttpingTimeoutSeconds) };
@@ -94,7 +109,7 @@ public static class HttpingTester
             using var preReq = new HttpRequestMessage(HttpMethod.Head, config.SpeedUrl);
             preReq.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
 
-            var preResp = await client.SendAsync(preReq, CancellationToken.None);
+            var preResp = await client.SendAsync(preReq, ct);
             if (config.Debug)
                 CfstRunner.WriteLineLog($"[调试] IP: {ip}, StatusCode: {(int)preResp.StatusCode}, URL: {config.SpeedUrl}");
             if (!IsValidStatusCode((int)preResp.StatusCode, config))
@@ -110,6 +125,7 @@ public static class HttpingTester
             var samples = new List<double>(config.PingCount);
             for (var i = 0; i < config.PingCount; i++)
             {
+                ct.ThrowIfCancellationRequested();
                 using var req = new HttpRequestMessage(HttpMethod.Head, config.SpeedUrl);
                 req.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
                 if (i == config.PingCount - 1)
@@ -118,7 +134,7 @@ public static class HttpingTester
                 var sw = Stopwatch.StartNew();
                 try
                 {
-                    var resp = await client.SendAsync(req, CancellationToken.None);
+                    var resp = await client.SendAsync(req, ct);
                     var code = (int)resp.StatusCode;
                     if (code == 200 || code == 301 || code == 302)
                     {
@@ -132,6 +148,10 @@ public static class HttpingTester
             }
 
             return (received, totalMs, colo, samples);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -156,6 +176,7 @@ public static class HttpingTester
             ConnectCallback = async (context, token) =>
             {
                 var socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                socket.NoDelay = true;
                 socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Linger, new LingerOption(true, 0));
                 await socket.ConnectAsync(new IPEndPoint(ip, port), token);
                 var stream = new NetworkStream(socket, ownsSocket: true);
