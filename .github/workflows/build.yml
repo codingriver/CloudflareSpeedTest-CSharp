@@ -117,7 +117,7 @@ jobs:
       - name: Publish ${{ matrix.out }} [AOT${{ matrix.upx == true && '+UPX' || '' }}] (musl)
         if: contains(matrix.rid, 'musl')
         run: |
-          docker run --rm -v "$PWD:/src" -w /src \
+          docker run --rm -u $(id -u):$(id -g) -v "$PWD:/src" -w /src \
             mcr.microsoft.com/dotnet/sdk:8.0-alpine \
             sh -c '
               apk add --no-cache build-base clang zlib-dev upx
