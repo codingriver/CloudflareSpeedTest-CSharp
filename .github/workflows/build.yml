@@ -131,7 +131,7 @@ jobs:
                 echo "UPX skipped"
               fi
               # 将输出目录所有权改为 runner 用户，避免后续 cp 权限问题
-              chown -R $(stat -c %u:%g /src) /src/publish/tmp/${{ matrix.out }}
+              chown -R $(stat -c %u:%g /src) /src/publish/
             '
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
