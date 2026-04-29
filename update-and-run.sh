@@ -218,7 +218,7 @@ process_and_update_dns() {
  fi
  done
  if [ "$valid" = true ]; then
- local domain="jiasu${line_num}.cf.606077.xyz"
+ local domain="${DNS_DOMAIN_PREFIX}${line_num}.${DNS_DOMAIN_SUFFIX}"
  echo "第 ${line_num} 行: $line -> $domain"
  local resp
  resp=$(curl -fsS --max-time 30 "${DNS_API_URL}?action=update&domain=${domain}&value=${line}" 2>&1) || {
@@ -244,6 +244,10 @@ echo ""
 check_and_update_cfst
 CFST_FILE=$(get_cfst_filename)
 run_cfst "$CFST_FILE"
+process_and_update_dns
+
+echo "======================== end ========================"
+ST_FILE"
 process_and_update_dns
 
 echo "======================== end ========================"
