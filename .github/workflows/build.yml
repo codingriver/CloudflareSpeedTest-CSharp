@@ -22,7 +22,7 @@ jobs:
             exe: cfst
             os: ubuntu-latest
             upx: true
-            out: cfst-linux-x64-upx
+            out: cfst-linux-glibc-x64-upx
             container: ""
           - rid: linux-musl-x64
             exe: cfst
@@ -53,7 +53,7 @@ jobs:
             exe: cfst
             os: ubuntu-latest
             upx: false
-            out: cfst-linux-x64
+            out: cfst-linux-glibc-x64
             container: ""
           - rid: linux-musl-x64
             exe: cfst
@@ -65,7 +65,7 @@ jobs:
             exe: cfst
             os: ubuntu-24.04-arm
             upx: false
-            out: cfst-linux-arm64
+            out: cfst-linux-glibc-arm64
             container: ""
           - rid: linux-musl-arm64
             exe: cfst
@@ -90,6 +90,26 @@ jobs:
     container: ${{ matrix.container || '' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              assembly_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.0"
+            else
+              echo "Invalid version tag: $GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+          else
+            version="0.0.0-dev"
+            assembly_version="0.0.0.0"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "ASSEMBLY_VERSION=$assembly_version" >> "$GITHUB_ENV"
 
       # musl (Alpine) 容器：安装 build-base + clang + zlib-dev
       - name: Install musl build deps (Alpine)
@@ -117,12 +137,16 @@ jobs:
       - name: Publish ${{ matrix.out }} [AOT${{ matrix.upx == true && '+UPX' || '' }}] (musl)
         if: contains(matrix.rid, 'musl')
         run: |
-          docker run --rm -v "$PWD:/src" -w /src \
+          docker run --rm -e VERSION="$VERSION" -e ASSEMBLY_VERSION="$ASSEMBLY_VERSION" -v "$PWD:/src" -w /src \
             mcr.microsoft.com/dotnet/sdk:8.0-alpine \
             sh -c '
               apk add --no-cache build-base clang zlib-dev upx
               dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -f net8.0 -c Release \
                 -p:PublishAot=true \
+                -p:Version="$VERSION" \
+                -p:AssemblyVersion="$ASSEMBLY_VERSION" \
+                -p:FileVersion="$ASSEMBLY_VERSION" \
+                -p:InformationalVersion="$VERSION" \
                 -p:StripSymbols=true \
                 -o /src/publish/tmp/${{ matrix.out }}
               if [ "${{ matrix.upx }}" = "true" ]; then
@@ -143,6 +167,10 @@ jobs:
         run: |
           dotnet publish CloudflareST.csproj -r ${{ matrix.rid }} -f net8.0 -c Release \
             -p:PublishAot=true \
+            -p:Version="$VERSION" \
+            -p:AssemblyVersion="$ASSEMBLY_VERSION" \
+            -p:FileVersion="$ASSEMBLY_VERSION" \
+            -p:InformationalVersion="$VERSION" \
             -p:StripSymbols=true \
             -o publish/tmp/${{ matrix.out }}
         env:
@@ -191,17 +219,71 @@ jobs:
           path: artifacts
 
       - name: Prepare release files
+        shell: bash
         run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p release
           # 每个 artifact 目录名就是最终文件名，直接复制
           find artifacts -maxdepth 2 -type f | while read f; do
             cp "$f" "release/"
           done
-          chmod +x release/cfst-linux-x64 release/cfst-linux-x64-upx || true
+          chmod +x release/cfst-linux-glibc-x64 release/cfst-linux-glibc-x64-upx || true
           chmod +x release/cfst-linux-musl-x64 release/cfst-linux-musl-x64-upx || true
           chmod +x release/cfst-linux-arm64 release/cfst-linux-arm64-upx || true
           chmod +x release/cfst-linux-musl-arm64 release/cfst-linux-musl-arm64-upx || true
           chmod +x release/cfst-macos-x64 release/cfst-macos-arm64 || true
+
+          create_package() {
+            src="$1"
+            target="$2"
+            pkg="cfst-${target}"
+            mkdir -p "release/pkg/${pkg}"
+            cp "release/${src}" "release/pkg/${pkg}/cfst"
+            chmod +x "release/pkg/${pkg}/cfst"
+            printf '%s\n' "$VERSION" > "release/pkg/${pkg}/VERSION"
+            test "$(cat "release/pkg/${pkg}/VERSION")" = "$VERSION"
+            (cd release/pkg && tar -czf "../${pkg}.tar.gz" "${pkg}")
+          }
+
+          create_package "cfst-linux-glibc-x64" "linux-x64"
+          create_package "cfst-linux-musl-x64" "linux-x64-musl"
+          create_package "cfst-linux-glibc-arm64" "linux-arm64"
+          create_package "cfst-linux-musl-arm64" "linux-arm64-musl"
+          create_package "cfst-macos-x64" "macos-x64"
+          create_package "cfst-macos-arm64" "macos-arm64"
+
+          (cd release && sha256sum cfst-*.tar.gz > SHA256SUMS.txt)
+
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          tag = os.environ["GITHUB_REF_NAME"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          release_dir = Path("release")
+          assets = []
+          for path in sorted(release_dir.glob("cfst-*.tar.gz")):
+              data = path.read_bytes()
+              assets.append({
+                  "name": path.name,
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{path.name}",
+                  "size": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+
+          manifest = {
+              "version": version,
+              "releaseUrl": f"https://github.com/{repo}/releases/tag/{tag}",
+              "notes": "",
+              "checksumUrl": f"https://github.com/{repo}/releases/download/{tag}/SHA256SUMS.txt",
+              "assets": assets,
+          }
+          (release_dir / "latest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -219,6 +301,14 @@ jobs:
             release/cfst-linux-musl-arm64
             release/cfst-macos-x64
             release/cfst-macos-arm64
+            release/cfst-linux-x64.tar.gz
+            release/cfst-linux-x64-musl.tar.gz
+            release/cfst-linux-arm64.tar.gz
+            release/cfst-linux-arm64-musl.tar.gz
+            release/cfst-macos-x64.tar.gz
+            release/cfst-macos-arm64.tar.gz
+            release/SHA256SUMS.txt
+            release/latest.json
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

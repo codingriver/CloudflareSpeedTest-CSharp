@@ -164,7 +164,12 @@ function Publish-Rid {
         }
     }
 
-    $finalName = if ($Rid -eq 'win-x64') { "cfst-$Rid$suffix.exe" } else { "cfst-$Rid$suffix" }
+    $publishRid = switch ($Rid) {
+        'linux-x64' { 'linux-glibc-x64' }
+        'linux-arm64' { 'linux-glibc-arm64' }
+        default { $Rid }
+    }
+    $finalName = if ($Rid -eq 'win-x64') { "cfst-$publishRid$suffix.exe" } else { "cfst-$publishRid$suffix" }
     $FinalPath = Join-Path $PublishBase $finalName
     Copy-Item $ExePath $FinalPath -Force
     $Size = (Get-Item $FinalPath).Length / 1MB

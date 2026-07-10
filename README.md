@@ -4,6 +4,40 @@
 
 ## 快速开始
 
+### Linux / macOS 一键安装（推荐）
+
+安装脚本会自动识别系统和 CPU 架构，从 GitHub Releases 下载匹配的 `.tar.gz` 软件包，并校验文件大小与 SHA-256。重复执行同一条命令即可检查更新。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/codingriver/CloudflareSpeedTest-CSharp/master/install.sh | sh
+~/.local/share/cfst/cfst
+```
+
+安装到当前目录并运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/codingriver/CloudflareSpeedTest-CSharp/master/install.sh -o install.sh && \
+chmod +x install.sh && \
+./install.sh . && \
+./cfst
+```
+
+指定安装目录：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/codingriver/CloudflareSpeedTest-CSharp/master/install.sh | \
+  sh -s -- "$HOME/apps/cfst"
+```
+
+常用安装器参数：
+
+```bash
+./install.sh --force "$HOME/apps/cfst"              # 强制重装或允许降级
+./install.sh --target linux-x64-musl "$HOME/apps/cfst" # 覆盖自动平台识别
+```
+
+安装器不会自动修改 `PATH`，也不会覆盖已有的 `ip.txt`、`ipv6.txt`、`result.csv`、`onlyip.txt` 等运行数据。当前版本通过固定启动器 `cfst` 启动，旧版本保留在安装目录的 `releases/` 下。
+
 ### Windows
 
 在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载 `cfst-windows-x64.exe`，双击或命令行运行：
@@ -23,7 +57,7 @@
 
 ### Linux
 
-在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载对应版本：
+推荐使用上方安装脚本。也可以在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 手动下载对应版本：
 
 | 产物名称 | 适用场景 |
 |---------|---------|
@@ -31,6 +65,8 @@
 | `cfst-linux-musl-x64` | Alpine Linux、轻量容器、嵌入式系统 |
 | `cfst-linux-glibc-arm64` | ARM64 服务器（如 AWS Graviton、树莓派 64 位系统） |
 | `cfst-linux-musl-arm64` | ARM64 Alpine/容器环境 |
+| `cfst-linux-x64.tar.gz` | 安装脚本使用的软件包（glibc x64） |
+| `cfst-linux-x64-musl.tar.gz` | 安装脚本使用的软件包（musl x64） |
 | `-upx` 后缀 | 体积更小（~5 MB），但部分杀软可能误报 |
 | 无 `-upx` | 体积稍大（~10 MB），杀软友好 |
 
@@ -52,7 +88,7 @@ chmod +x cfst-linux-glibc-x64
 
 ### macOS
 
-在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载：Intel 用 `cfst-macos-x64`，Apple Silicon 用 `cfst-macos-arm64`。
+推荐使用上方安装脚本。也可以在 [Release 页面](https://github.com/codingriver/CloudflareSpeedTest-CSharp/releases) 下载：Intel 用 `cfst-macos-x64` 或 `cfst-macos-x64.tar.gz`，Apple Silicon 用 `cfst-macos-arm64` 或 `cfst-macos-arm64.tar.gz`。
 
 ```bash
 chmod +x cfst-macos-x64    # 或 cfst-macos-arm64

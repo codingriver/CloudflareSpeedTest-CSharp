@@ -154,11 +154,17 @@ publish_rid() {
         fi
     fi
 
+    local publish_rid="$rid"
+    case "$rid" in
+        linux-x64) publish_rid="linux-glibc-x64" ;;
+        linux-arm64) publish_rid="linux-glibc-arm64" ;;
+    esac
+
     local final_name
     if [[ "$rid" == "win-x64" ]]; then
-        final_name="cfst-${rid}${suffix}.exe"
+        final_name="cfst-${publish_rid}${suffix}.exe"
     else
-        final_name="cfst-${rid}${suffix}"
+        final_name="cfst-${publish_rid}${suffix}"
     fi
     local final_path="$PUBLISH_BASE/$final_name"
     cp "$exe_path" "$final_path"

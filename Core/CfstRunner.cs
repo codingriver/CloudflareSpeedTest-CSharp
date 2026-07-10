@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Text;
 using System.IO;
 using System.Diagnostics;
+using System.Reflection;
 using CloudflareST;
 
 namespace CloudflareST
@@ -69,6 +70,12 @@ public static class CfstRunner
     /// </summary>
     public static async Task<int> RunCliAsync(string[] args)
     {
+        if (IsVersionCommand(args))
+        {
+            WriteLineLog(GetVersion());
+            return 0;
+        }
+
         var config = ParseArgs(args);
         NormalizeConfig(config);
 
@@ -400,6 +407,24 @@ public static class CfstRunner
             HostsDryRun = GetBool("-hosts-dry-run"), ShowProgress = GetBool("-progress"),
             CdnProxy = GetArg(args, "-cdnproxy"),
         };
+    }
+
+    private static bool IsVersionCommand(string[] args)
+        => args.Length == 1 &&
+           (args[0].Equals("--version", StringComparison.OrdinalIgnoreCase) ||
+            args[0].Equals("-v", StringComparison.OrdinalIgnoreCase) ||
+            args[0].Equals("version", StringComparison.OrdinalIgnoreCase));
+
+    private static string GetVersion()
+    {
+        var assembly = typeof(CfstRunner).Assembly;
+        var informationalVersion = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informationalVersion))
+            return informationalVersion.Split('+')[0];
+
+        return assembly.GetName().Version?.ToString() ?? "0.0.0-dev";
     }
 
     private static void WriteOnlyIp(Config cfg, IReadOnlyList<IPInfo> results)
