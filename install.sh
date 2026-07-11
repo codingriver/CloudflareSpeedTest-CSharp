@@ -8,6 +8,27 @@ REPO_NAME="CloudflareSpeedTest-CSharp"
 DEFAULT_MANIFEST_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download/latest.json"
 DEFAULT_INSTALL_DIR="${HOME:-.}/.local/share/${PROGRAM}"
 SUPPORTED_TARGETS=" linux-x64 linux-x64-musl linux-arm64 linux-arm64-musl macos-x64 macos-arm64 "
+GITHUB_MIRRORS='
+https://gh-proxy.303066.xyz
+https://gh-proxy.com
+https://gh-proxy.org
+https://gh-proxy.303066.xyz
+https://mirror.ghproxy.com
+https://ghfast.top
+https://ghp.ci
+https://gh.kk.cc
+https://gh.aptv.app
+https://gh.927223.xyz
+https://gh.haonice.com
+https://github.akams.cn
+https://ui.ghproxy.cc
+https://gh.ddc.top
+https://gh-proxy.net
+https://hub.gitmirror.com
+https://github.moeyy.xyz
+https://ghfie.geekertao.top
+https://proxy.606055.xyz
+'
 
 force=0
 manifest_url="${CFST_MANIFEST_URL:-$DEFAULT_MANIFEST_URL}"
@@ -88,16 +109,91 @@ need_cmd() {
     has_cmd "$1" || die "required command not found: $1"
 }
 
-download_file() {
+github_mirror_url() {
+    mirror=$1
+    url=$2
+    mirror=${mirror%/}
+
+    case "$url" in
+        https://github.com/*|https://raw.githubusercontent.com/*|https://objects.githubusercontent.com/*)
+            printf '%s/%s\n' "$mirror" "$url"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_network_download_error() {
+    tool=$1
+    status=$2
+
+    case "$tool:$status" in
+        curl:5|curl:6|curl:7|curl:28|curl:35|curl:52|curl:56|wget:4)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+download_once() {
     url=$1
     out=$2
+    tmp_out="$out.tmp.$$"
+    rm -f "$tmp_out"
+
     if has_cmd curl; then
-        curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 -o "$out" "$url"
+        download_tool=curl
+        curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 -o "$tmp_out" "$url"
+        download_status=$?
     elif has_cmd wget; then
-        wget -O "$out" "$url"
+        download_tool=wget
+        wget -q --timeout=300 -O "$tmp_out" "$url"
+        download_status=$?
     else
         die "curl or wget is required"
     fi
+
+    if [ "$download_status" -eq 0 ]; then
+        if mv "$tmp_out" "$out"; then
+            return 0
+        else
+            download_status=$?
+        fi
+        rm -f "$tmp_out"
+        return "$download_status"
+    fi
+
+    rm -f "$tmp_out"
+    return "$download_status"
+}
+
+download_file() {
+    url=$1
+    out=$2
+
+    log "Downloading: $url"
+    if download_once "$url" "$out"; then
+        return 0
+    fi
+
+    first_tool=$download_tool
+    first_status=$download_status
+    if ! is_network_download_error "$first_tool" "$first_status"; then
+        return "$first_status"
+    fi
+
+    for mirror in $GITHUB_MIRRORS; do
+        mirror_url=$(github_mirror_url "$mirror" "$url") || continue
+        log "Network error, retrying with GitHub mirror: $mirror"
+        if download_once "$mirror_url" "$out"; then
+            return 0
+        fi
+    done
+
+    return "$first_status"
 }
 
 detect_musl() {
